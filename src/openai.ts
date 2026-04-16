@@ -7,6 +7,7 @@ import {
   resolveFetch,
   type AllTokenConfig,
 } from './client';
+import { Chat } from './resources/chat';
 
 /** Path prefix for the OpenAI-compatible surface. */
 const OPENAI_PATH = '/v1';
@@ -26,6 +27,7 @@ const OPENAI_PATH = '/v1';
  */
 export class OpenAIClient {
   readonly raw: Client<paths>;
+  readonly chat: Chat;
 
   constructor(config: AllTokenConfig) {
     const baseUrl = joinBaseURL(config.baseURL ?? DEFAULT_BASE_URL, OPENAI_PATH);
@@ -34,6 +36,7 @@ export class OpenAIClient {
       headers: buildHeaders(config),
       fetch: resolveFetch(config),
     });
+    this.chat = new Chat(config, baseUrl);
   }
 }
 

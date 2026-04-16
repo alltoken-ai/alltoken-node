@@ -40,6 +40,16 @@ export class AllToken {
 
 export { OpenAIClient } from './openai';
 export { AnthropicClient } from './anthropic';
+export { AllTokenError } from './error';
+export { AllTokenStream } from './streaming';
 export type { AllTokenConfig } from './client';
 export type { OpenAIPaths } from './openai';
 export type { AnthropicPaths } from './anthropic';
+export type {
+  ChatCompletionCreateParams,
+  ChatCompletion,
+  ChatCompletionChunk,
+  ChatMessage,
+  Choice,
+  Usage,
+} from './types';
