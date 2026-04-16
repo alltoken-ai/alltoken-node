@@ -1,0 +1,67 @@
+{
+  "name": "@alltoken-ai/sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript SDK for AllToken — one API for OpenAI, Anthropic, and 100+ models.",
+  "license": "MIT",
+  "author": "AllToken <dev@alltoken.ai>",
+  "homepage": "https://alltoken.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alltoken-ai/alltoken-node"
+  },
+  "bugs": {
+    "url": "https://github.com/alltoken-ai/alltoken-node/issues"
+  },
+  "keywords": [
+    "alltoken",
+    "openai",
+    "anthropic",
+    "llm",
+    "ai",
+    "sdk",
+    "api-client",
+    "typescript"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run generate && npm run build"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "openapi-typescript": "^7.13.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
