@@ -1,10 +1,10 @@
 /**
- * @alltoken-ai/sdk — Official TypeScript SDK for AllToken.
+ * @alltoken/ai — Official TypeScript SDK for AllToken.
  * One API for OpenAI, Anthropic, and 100+ models.
  *
  * @example
  * ```ts
- * import { AllToken } from '@alltoken-ai/sdk';
+ * import { AllToken } from '@alltoken/ai';
  *
  * const client = new AllToken({ apiKey: process.env.ALLTOKEN_API_KEY! });
  *

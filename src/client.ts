@@ -29,7 +29,7 @@ export function resolveFetch(config: AllTokenConfig): typeof fetch {
   const fetchFn = config.fetch ?? globalThis.fetch;
   if (!fetchFn) {
     throw new Error(
-      '[@alltoken-ai/sdk] No fetch implementation found. Pass `fetch` in the config or use Node 18+.'
+      '[@alltoken/ai] No fetch implementation found. Pass `fetch` in the config or use Node 18+.'
     );
   }
   return fetchFn;

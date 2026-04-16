@@ -1,9 +1,9 @@
-# @alltoken-ai/sdk
+# @alltoken/ai
 
 Official TypeScript SDK for [AllToken](https://alltoken.ai) — one API for OpenAI, Anthropic, and 100+ models.
 
 ```bash
-npm install @alltoken-ai/sdk
+npm install @alltoken/ai
 ```
 
 Requires **Node.js 18+** (for built-in `fetch`). Works in browsers, Deno, Bun, Cloudflare Workers.
@@ -11,7 +11,7 @@ Requires **Node.js 18+** (for built-in `fetch`). Works in browsers, Deno, Bun, C
 ## Quick start
 
 ```ts
-import { AllToken } from '@alltoken-ai/sdk';
+import { AllToken } from '@alltoken/ai';
 
 const client = new AllToken({ apiKey: process.env.ALLTOKEN_API_KEY! });
 
