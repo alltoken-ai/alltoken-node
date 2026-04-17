@@ -287,8 +287,10 @@ export interface components {
             resolution?: "480p" | "720p" | "1080p";
             /** @description 帧数（优先级高于 duration） */
             frames?: number;
-            /** @default true */
-            generate_audio: boolean;
+            /** @description 是否生成音频 */
+            generate_audio?: boolean;
+            /** @description 输入是否包含视频（图生视频） */
+            input_has_video?: boolean;
             /** Format: int64 */
             seed?: number;
             camera_fixed?: boolean;
@@ -355,6 +357,7 @@ export interface components {
             /** Format: int64 */
             seed?: number;
             generate_audio?: boolean;
+            input_has_video?: boolean;
             draft?: boolean;
             draft_task_id?: string;
             service_tier?: string;
