@@ -23,6 +23,12 @@ jobs:
 
       - run: npm ci
 
+      - name: Validate OpenAPI specs
+        run: |
+          npx --yes @apidevtools/swagger-cli validate ../megaopenrouter/openapi/chat.yml
+          npx --yes @apidevtools/swagger-cli validate ../megaopenrouter/openapi/anthropic.yml
+          npx --yes @apidevtools/swagger-cli validate ../megaopenrouter/openapi/account.yml
+
       - name: Run codegen
         run: npm run generate
 

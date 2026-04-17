@@ -1,0 +1,69 @@
+name: Auto Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'chore/sync-spec')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Bump version and publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm version patch --no-git-tag-version
+          VERSION=$(node -p "require('./package.json').version")
+          npm publish --access public
+          echo "RELEASED_VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore: release v${RELEASED_VERSION} [skip ci]"
+          git tag "v${RELEASED_VERSION}"
+          git push origin main --follow-tags
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${RELEASED_VERSION}" \
+            --title "v${RELEASED_VERSION}" \
+            --notes "Auto-release from OpenAPI spec sync. Published to npm as @alltoken/ai@${RELEASED_VERSION}."
+
+      - name: Notify Feishu
+        if: always()
+        run: |
+          [ -z "${{ secrets.ALERT_WEBHOOK }}" ] && exit 0
+          if [ "${{ job.status }}" = "success" ]; then
+            MSG="alltoken-node v${RELEASED_VERSION} published to npm"
+          else
+            MSG="alltoken-node auto-release failed. Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
+          curl -s -X POST "${{ secrets.ALERT_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"${MSG}\"}}"
