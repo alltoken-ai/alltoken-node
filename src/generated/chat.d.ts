@@ -61,9 +61,29 @@ export interface paths {
         };
         /**
          * List models
-         * @description 返回网关当前支持的全部模型（OpenAI 兼容格式）
+         * @description 返回网关当前支持的全部文本和图像模型（不包含视频生成模型，OpenAI 兼容格式）
          */
         get: operations["listModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/videos/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List video generation models
+         * @description 返回网关当前支持的视频生成模型列表（OpenAI 兼容格式）
+         */
+        get: operations["listVideoModels"];
         put?: never;
         post?: never;
         delete?: never;
@@ -554,6 +574,46 @@ export interface operations {
                      *           "object": "model",
                      *           "created": 1700000000,
                      *           "owned_by": "anthropic"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listVideoModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 视频生成模型列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "object": "list",
+                     *       "data": [
+                     *         {
+                     *           "id": "seedance-1.5-pro",
+                     *           "object": "model",
+                     *           "created": 1700000000,
+                     *           "owned_by": "chat"
+                     *         },
+                     *         {
+                     *           "id": "seedance-2.0",
+                     *           "object": "model",
+                     *           "created": 1700000000,
+                     *           "owned_by": "chat"
                      *         }
                      *       ]
                      *     }
