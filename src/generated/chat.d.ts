@@ -245,8 +245,6 @@ export interface components {
             choices: components["schemas"]["Choice"][];
             usage?: components["schemas"]["Usage"];
             system_fingerprint?: string;
-            /** @description 网关扩展 —— 实际处理请求的 provider 名 */
-            "x-gateway-provider"?: string;
             /** @description 网关扩展 —— 请求 ID（便于排查） */
             "x-gateway-request-id"?: string;
             /**
