@@ -287,10 +287,19 @@ export interface components {
         ModelInfo: {
             id: string;
             /** @enum {string} */
-            object: "model";
+            object: "model" | "video";
             /** Format: int64 */
             created?: number;
             owned_by?: string;
+            display_name?: string;
+            brand?: string;
+            family?: string;
+            series?: string;
+            /** Format: uri */
+            logo_url?: string;
+            description?: string;
+            input_modalities?: string[];
+            output_modalities?: string[];
         };
         VideoGenerationRequest: {
             /** @example seedance-1.5-pro */
@@ -365,6 +374,8 @@ export interface components {
             video_url_expires_at?: string;
             /** @description 视频 URL 剩余有效秒数 */
             video_url_ttl?: number;
+            /** @description 生成视频 URL 或任务是否已过期 */
+            is_expired: boolean;
             /** Format: uri */
             last_frame_url?: string;
             duration?: number;
@@ -603,15 +614,36 @@ export interface operations {
                      *       "data": [
                      *         {
                      *           "id": "seedance-1.5-pro",
-                     *           "object": "model",
+                     *           "object": "video",
                      *           "created": 1700000000,
-                     *           "owned_by": "chat"
+                     *           "display_name": "Seedance 1.5 Pro",
+                     *           "brand": "bytedance",
+                     *           "family": "bytedance",
+                     *           "series": "Seedance",
+                     *           "input_modalities": [
+                     *             "text",
+                     *             "image"
+                     *           ],
+                     *           "output_modalities": [
+                     *             "video"
+                     *           ]
                      *         },
                      *         {
                      *           "id": "seedance-2.0",
-                     *           "object": "model",
+                     *           "object": "video",
                      *           "created": 1700000000,
-                     *           "owned_by": "chat"
+                     *           "display_name": "Seedance 2.0",
+                     *           "brand": "bytedance",
+                     *           "family": "bytedance",
+                     *           "series": "Seedance",
+                     *           "input_modalities": [
+                     *             "text",
+                     *             "image",
+                     *             "video"
+                     *           ],
+                     *           "output_modalities": [
+                     *             "video"
+                     *           ]
                      *         }
                      *       ]
                      *     }
