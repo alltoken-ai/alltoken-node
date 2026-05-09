@@ -28,6 +28,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/responses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create response
+         * @description OpenAI Responses API 透传入口。仅对配置为 `api_format=responses` 的模型生效，
+         *     请求体与响应体按 OpenAI `/v1/responses` 协议原样透传；`stream: true` 时返回 SSE。
+         */
+        post: operations["createResponse"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/messages": {
         parameters: {
             query?: never;
@@ -92,6 +113,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/images/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 列出图像生成模型
+         * @description 返回网关当前支持的图像生成模型列表；字段结构与 `/videos/models` 一致，`object` 为 `image`。
+         */
+        get: operations["listImageModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/videos/generations": {
         parameters: {
             query?: never;
@@ -141,6 +182,74 @@ export interface paths {
         put?: never;
         /** Cancel video generation task */
         post: operations["cancelVideoGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/generations/async": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 创建图像生成任务
+         * @description 推荐创建异步图像生成任务路径。返回任务 ID，使用 `GET /images/generations/{id}` 轮询状态。
+         *
+         *     生成结果为 OpenAI ImagesResponse 兼容 JSON，结果图片以 `b64_json` 返回。任务完成后结果只允许成功领取一次；
+         *     首次成功 `GET` 后服务端会删除本地临时结果文件。结果文件 TTL 默认 30 分钟，过期或已领取后返回 `410`。
+         */
+        post: operations["createAsyncImageGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 创建图像生成任务（旧异步路径）
+         * @description 兼容旧创建路径，行为与 `POST /images/generations/async` 完全一致。新接入推荐使用 `/images/generations/async`。
+         *
+         *     返回任务 ID，使用 `GET /images/generations/{id}` 轮询状态。结果图片以 `b64_json` 返回；首次成功 `GET` 后服务端会删除本地临时结果文件。
+         */
+        post: operations["createImageGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/generations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询图像生成任务或领取完成结果
+         * @description 查询图像生成任务状态。`queued` / `processing` / `failed` / `cancelled` 返回任务信封；
+         *     `completed` 首次成功调用会返回 OpenAI ImagesResponse 兼容 JSON，并立刻删除服务端临时结果文件。
+         *
+         *     已领取再次查询返回 `410 image_already_retrieved`；结果过期或临时文件不可读返回 `410 image_expired`。
+         */
+        get: operations["getImageGeneration"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -253,6 +362,16 @@ export interface components {
              */
             conversation_id?: number;
         };
+        ResponsesRequest: {
+            /** @example gpt-5.4-pro */
+            model: string;
+            /** @description OpenAI Responses API input，字符串或多模态数组/对象。 */
+            input?: unknown;
+            /** @default false */
+            stream: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         Choice: {
             index: number;
             message: components["schemas"]["ChatMessage"];
@@ -287,7 +406,7 @@ export interface components {
         ModelInfo: {
             id: string;
             /** @enum {string} */
-            object: "model" | "video";
+            object: "model" | "video" | "image";
             /** Format: int64 */
             created?: number;
             owned_by?: string;
@@ -415,6 +534,107 @@ export interface components {
             items: components["schemas"]["VideoTaskResponse"][];
             total: number;
         };
+        ImageGenerationRequest: {
+            /** @example gpt-image-2 */
+            model: string;
+            prompt: string;
+            /**
+             * @default auto
+             * @enum {string}
+             */
+            size: "auto" | "1024x1024" | "1536x1024" | "1024x1536";
+            /**
+             * @default auto
+             * @enum {string}
+             */
+            quality: "auto" | "low" | "medium" | "high";
+            /**
+             * @default png
+             * @enum {string}
+             */
+            output_format: "png" | "jpeg" | "webp";
+            /**
+             * @description `transparent` 当前不支持。
+             * @default auto
+             * @enum {string}
+             */
+            background: "auto" | "opaque";
+            /**
+             * @default auto
+             * @enum {string}
+             */
+            moderation: "auto" | "low";
+            /** @description 透传上游用于滥用监控。 */
+            user?: string;
+        };
+        ImageCreateResponse: {
+            /** @example igen_a7b68c38c4b7832ee386a13e */
+            id: string;
+            /** @enum {string} */
+            status: "queued";
+            model: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ImageTaskStatusResponse: {
+            /** @example igen_a7b68c38c4b7832ee386a13e */
+            id: string;
+            /** @enum {string} */
+            status: "queued" | "processing" | "failed" | "cancelled";
+            model: string;
+            /** @description queued/processing 状态建议轮询间隔毫秒数。 */
+            next_poll_after_ms?: number;
+            error?: components["schemas"]["ImageError"];
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        ImageGenerationResponse: {
+            /** @example igen_a7b68c38c4b7832ee386a13e */
+            id: string;
+            /** @enum {string} */
+            status: "completed";
+            model: string;
+            /** Format: int64 */
+            created: number;
+            data: components["schemas"]["ImageDataItem"][];
+            usage?: components["schemas"]["ImageUsage"];
+            size?: string;
+            quality?: string;
+            output_format?: string;
+            /** Format: date-time */
+            completed_at?: string;
+            /**
+             * Format: date-time
+             * @description 本地临时结果文件领取截止时间。
+             */
+            expires_at?: string;
+        };
+        ImageDataItem: {
+            /** @description Base64 编码图片数据。服务端只在首次成功领取时返回。 */
+            b64_json?: string;
+            /**
+             * Format: uri
+             * @description 上游返回 URL 时的原始图片地址；服务端会同步下载并填充 b64_json。
+             */
+            url?: string;
+            revised_prompt?: string;
+        };
+        ImageUsage: {
+            input_tokens?: number;
+            output_tokens?: number;
+            total_tokens?: number;
+            input_tokens_details?: {
+                text_tokens?: number;
+                image_tokens?: number;
+            };
+        };
+        ImageError: {
+            code: string;
+            type?: string;
+            message: string;
+        };
         ErrorResponse: {
             error: {
                 code?: string;
@@ -422,6 +642,8 @@ export interface components {
                 param?: string | null;
                 type: string;
                 request_id?: string;
+                /** @description Idempotency-Key 命中时返回原任务 ID。 */
+                task_id?: string;
             };
         };
     };
@@ -464,6 +686,15 @@ export interface components {
         };
         /** @description 资源不存在 */
         NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description 资源已过期或图像结果已被领取 */
+        Gone: {
             headers: {
                 [name: string]: unknown;
             };
@@ -515,6 +746,44 @@ export interface operations {
                      *
                      *     data: [DONE]
                      */
+                    "text/event-stream": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["InsufficientBalance"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["ServerError"];
+        };
+    };
+    createResponse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "model": "gpt-5.4-pro",
+                 *       "input": "Explain the image generation pipeline in one paragraph."
+                 *     }
+                 */
+                "application/json": components["schemas"]["ResponsesRequest"];
+            };
+        };
+        responses: {
+            /** @description OpenAI Responses API JSON 或 SSE 透传响应 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                     "text/event-stream": string;
                 };
             };
@@ -654,6 +923,51 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    listImageModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 图像生成模型列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "object": "list",
+                     *       "data": [
+                     *         {
+                     *           "id": "gpt-image-2",
+                     *           "object": "image",
+                     *           "created": 1778122410,
+                     *           "display_name": "GPT Image 2",
+                     *           "brand": "openai",
+                     *           "family": "openai",
+                     *           "series": "GPT Image",
+                     *           "description": "OpenAI 图像生成模型，支持文本/图片输入到图片输出",
+                     *           "input_modalities": [
+                     *             "text",
+                     *             "image"
+                     *           ],
+                     *           "output_modalities": [
+                     *             "image"
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     listVideoGenerations: {
         parameters: {
             query?: {
@@ -760,6 +1074,141 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+        };
+    };
+    createAsyncImageGeneration: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 60 秒短期去重；命中时返回 `409 duplicate_request` 和原任务 ID。 */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description 任务已创建 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "igen_a7b68c38c4b7832ee386a13e",
+                     *       "status": "queued",
+                     *       "model": "gpt-image-2",
+                     *       "created_at": "2026-05-07T02:54:12Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ImageCreateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["InsufficientBalance"];
+            /** @description Idempotency-Key 命中或结果领取冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["ServerError"];
+        };
+    };
+    createImageGeneration: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 60 秒短期去重；命中时返回 `409 duplicate_request` 和原任务 ID。 */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description 任务已创建 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "igen_a7b68c38c4b7832ee386a13e",
+                     *       "status": "queued",
+                     *       "model": "gpt-image-2",
+                     *       "created_at": "2026-05-07T02:54:12Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ImageCreateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["InsufficientBalance"];
+            /** @description Idempotency-Key 命中或结果领取冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["ServerError"];
+        };
+    };
+    getImageGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 任务状态或首次领取的图像结果 */
+            200: {
+                headers: {
+                    /** @description queued/processing 状态建议等待秒数 */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageTaskStatusResponse"] | components["schemas"]["ImageGenerationResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description 另一个请求正在领取结果 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            410: components["responses"]["Gone"];
+            500: components["responses"]["ServerError"];
         };
     };
 }
