@@ -145,7 +145,10 @@ export interface paths {
         put?: never;
         /**
          * Create a video generation task
-         * @description 创建异步视频生成任务。返回任务 ID，使用 `GET /videos/generations/{id}` 轮询状态。
+         * @description 创建异步视频生成任务。返回任务 ID（HTTP 202 Accepted），使用 `GET /videos/generations/{id}` 轮询状态。
+         *
+         *     **响应消息国际化**：错误响应的 `error.message` 会根据请求 `Accept-Language` 头返回对应语言文案（支持
+         *     en/zh/zh-Hant/ja/ko/fr/de）。`error.code` 字段保持稳定，客户端按 code 做分支判断。
          */
         post: operations["createVideoGeneration"];
         delete?: never;
@@ -243,9 +246,16 @@ export interface paths {
         /**
          * 查询图像生成任务或领取完成结果
          * @description 查询图像生成任务状态。`queued` / `processing` / `failed` / `cancelled` 返回任务信封；
-         *     `completed` 首次成功调用会返回 OpenAI ImagesResponse 兼容 JSON，并立刻删除服务端临时结果文件。
+         *     `completed` 首次成功调用会返回 OpenAI ImagesResponse 兼容 JSON 含 `b64_json` + `r2_url`，
+         *     并立刻删除服务端临时结果文件。
          *
-         *     已领取再次查询返回 `410 image_already_retrieved`；结果过期或临时文件不可读返回 `410 image_expired`。
+         *     二次及之后的查询：
+         *       - R2 URL 仍在 `r2_url_expires_at` 之前 → 返 200，data 含 `r2_url` 但**不含** `b64_json`
+         *         （`b64_json` 仍是一次性 delivery，跨刷新可访问 R2 URL 即可）
+         *       - R2 URL 已过期 → 返 `410 image_expired`
+         *       - 旧任务/R2 上传失败导致无 `r2_url` 兜底 → 返 `410 image_already_retrieved`
+         *
+         *     其他过期场景：本机临时文件 TTL（30min）过期但任务未 delivered → `410 image_expired`。
          */
         get: operations["getImageGeneration"];
         put?: never;
@@ -427,11 +437,34 @@ export interface components {
             content?: components["schemas"]["VideoContentItem"][];
             /** @enum {string} */
             ratio?: "16:9" | "9:16" | "4:3" | "3:4" | "21:9" | "1:1" | "adaptive";
-            /** @description 秒数；-1 表示智能时长 */
+            /**
+             * @description 视频时长（秒）。**取值范围按模型差异化**：
+             *     - `seedance-1.0-pro` / `seedance-1.0-pro-fast`：`[2, 12]` 任意整数
+             *     - `seedance-1.5-pro`：`[4, 12]` 任意整数 或 `-1`
+             *     - `seedance-2.0` / `seedance-2.0-fast`：`[4, 15]` 任意整数 或 `-1`
+             *
+             *     **`-1`（智能时长）**：由模型在有效范围内自主选择，**仅 1.5-pro / 2.0 系列支持**。
+             *
+             *     **`0` 或不传**：使用上游默认值（5）。
+             *
+             *     超出范围会被网关 fail-fast 拦截为 `400 invalid_request`，错误消息按 `Accept-Language` 渲染。
+             * @example 5
+             */
             duration?: number;
             /** @enum {string} */
             resolution?: "480p" | "720p" | "1080p";
-            /** @description 帧数（优先级高于 duration） */
+            /**
+             * @description 视频帧数（小数秒方案，与 duration 二选一，frames 优先级高于 duration）。
+             *
+             *     **仅 `seedance-1.0-pro` / `seedance-1.0-pro-fast` 支持**。其他模型（1.5-pro / 2.0 系列）
+             *     传 frames 会被网关**静默忽略**（silently drop），不会报错，符合 Postel 原则。
+             *
+             *     **取值约束**：`[29, 289]` 且必须满足 `25 + 4n` 格式（n 为正整数），如 29、33、37、...、289。
+             *
+             *     **计算公式**：帧数 = 时长 × 24（fps）。例如生成 2.4 秒 → 帧数 ≈ 57.6，取最接近的合法值 57（实际生成 57/24=2.375 秒）。
+             *
+             *     超出范围或格式错误会被网关 fail-fast 拦截为 `400 invalid_request`。
+             */
             frames?: number;
             /** @description 是否生成音频 */
             generate_audio?: boolean;
@@ -612,7 +645,14 @@ export interface components {
             expires_at?: string;
         };
         ImageDataItem: {
-            /** @description Base64 编码图片数据。服务端只在首次成功领取时返回。 */
+            /**
+             * @deprecated
+             * @description **【已弃用 / Deprecated，未来版本将移除】**
+             *
+             *     Base64 编码图片数据，仅在 `completed` 首次 GET 返回（一次性 delivery，二次 GET 不返回）。
+             *     推荐使用 `r2_url` 替代 —— R2 公开 URL 至少保留 30 天，跨刷新可访问且省 ~33% 流量（无 base64 膨胀）。
+             *     R2 上传失败时 `r2_url` 不存在，旧客户端仍可 fallback 到本字段。
+             */
             b64_json?: string;
             /**
              * Format: uri
@@ -620,6 +660,21 @@ export interface components {
              */
             url?: string;
             revised_prompt?: string;
+            /**
+             * Format: uri
+             * @description R2 公开 URL，至少保留 30 天，跨刷新可访问。首次 GET 同时返回 `b64_json` + `r2_url`；
+             *     二次 GET 不再返回 `b64_json`（一次性 delivery），但 `r2_url` 仍随 200 响应返回直到
+             *     `r2_url_expires_at` 过期（之后返 `410 image_expired`）。R2 上传失败时该字段不存在，
+             *     客户端应保留首次 GET 拿到的 `b64_json` 用于显示（旧任务/无 R2 兜底 → `410 image_already_retrieved`）。
+             */
+            r2_url?: string;
+            /**
+             * Format: date-time
+             * @description R2 URL 过期时间（RFC3339 UTC）。过期后由 R2 lifecycle 自动清理对象。
+             */
+            r2_url_expires_at?: string;
+            /** @description 图片 MIME 类型（`image/png` / `image/jpeg` / `image/webp`），便于客户端下载命名与浏览器解码。 */
+            mime_type?: string;
         };
         ImageUsage: {
             input_tokens?: number;
@@ -1006,8 +1061,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 任务已创建 */
-            200: {
+            /**
+             * @description 任务已创建（异步排队）。响应包含 `id`（task_id）+ `status: queued`，
+             *     后续用 `GET /videos/generations/{id}` 轮询直至 `succeeded` / `failed` / `cancelled` / `expired`。
+             */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1015,10 +1073,50 @@ export interface operations {
                     "application/json": components["schemas"]["VideoTaskResponse"];
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /**
+             * @description 入参非法。可能的 `error.code`：
+             *     - `invalid_request` — 网关 fail-fast 校验未通过（如 seedance-2.0 传 `duration=3` 落在 [4, 15] 之外、
+             *       1.0-pro 传 `duration=-1` 不支持智能时长、1.0-pro 传非 25+4n 格式的 frames 等）
+             *     - `upstream_invalid_parameter` — 上游拒绝的参数错误（漏网未被网关本地校验拦截的边界）
+             *     - `upstream_content_violation` — 提示词或参考素材含违规内容
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             402: components["responses"]["InsufficientBalance"];
+            /**
+             * @description 模型不可用。可能的 `error.code`：
+             *     - `upstream_model_not_found` — 上游服务暂时不可用该模型
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             429: components["responses"]["RateLimited"];
+            /**
+             * @description 上游服务异常。可能的 `error.code`：
+             *     - `upstream_error` — 上游 5xx / 网络错 / 解析错（不透传上游内部细节，仅用 i18n 通用文案）
+             *     - `upstream_auth_failed` — 上游鉴权问题（网关侧 key 失效，对外仅显示"服务暂时不可用"）
+             *     - `unknown_api_format` — 配置错（mapping.api_format 未在 adapter registry 注册）
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     getVideoGeneration: {
