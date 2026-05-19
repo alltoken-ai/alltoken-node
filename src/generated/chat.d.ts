@@ -214,6 +214,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/images/edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 创建图像编辑任务（i_edit / mask_edit）
+         * @description 基于源图（必填）+ prompt 创建图像编辑任务，请求体为 `multipart/form-data`。
+         *     - 不提供 `mask` 时按 i_edit（整图编辑）处理
+         *     - 提供 `mask` 时按 mask_edit（局部编辑）处理；`mask` 透明区域为编辑区
+         *     - 源图 / mask 各 ≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`
+         *     - 上游路径 `POST /v1/images/edits`；网关侧 24h R2 临时素材保留 + 任务结束 fail-soft 删除
+         *     - 返回任务 ID（前缀 `igen_iedit_` 或 `igen_mask_`），使用 `GET /images/generations/{id}` 轮询
+         */
+        post: operations["createImageEdit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/variations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 创建图像变体任务（variation）
+         * @description 基于源图（必填）创建图像变体任务，不接受 `prompt` / `mask`，请求体为 `multipart/form-data`。
+         *     - 上游路径 `POST /v1/images/variations`；仅 dall-e-2 等支持 variations 的模型有效，
+         *       不支持的模型上游返 4xx 错误透传到网关
+         *     - 源图 ≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`
+         *     - 返回任务 ID（前缀 `igen_ivar_`），使用 `GET /images/generations/{id}` 轮询
+         */
+        post: operations["createImageVariation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/images/generations": {
         parameters: {
             query?: never;
@@ -260,6 +309,64 @@ export interface paths {
         get: operations["getImageGeneration"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/portrait": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: paths["/portrait/"]["post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/portrait/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call portrait action
+         * @description 火山方舟 Assets API 的私域人像代理入口（LivenessFace 真人 + AIGC 虚拟）。
+         *     协议层使用火山官方 `Action + Version + JSON body` 形式；鉴权使用 AllToken
+         *     API Key，不暴露火山 AK/SK。
+         *
+         *     当前开放 12 个 Action：`CreateVisualValidateSession`、`GetVisualValidateResult`、
+         *     `CreateAssetGroup`（仅 AIGC）、`GetAssetGroup`、`ListAssetGroups`、
+         *     `UpdateAssetGroup`、`DeleteAssetGroup`、`CreateAsset`、`GetAsset`、
+         *     `ListAssets`、`UpdateAsset`、`DeleteAsset`。
+         *
+         *     业务错误也返回 HTTP 200，错误内容位于 `ResponseMetadata.Error`。`ListAssetGroups`
+         *     和 `ListAssets` 会按当前 API Key 所属客户做多租户过滤。
+         *
+         *     **多租户隔离（Wave 2.9.1 / 2.9.2）**：
+         *     - 任意 Action 跨 API Key 客户访问对方 GroupId / AssetId 一律返
+         *       `ResponseMetadata.Error.Code=Forbidden`，不暴露资源存在性。
+         *     - 客户传入的 `Name` 字段网关只在响应层暴露原值；落到火山侧时会自动加
+         *       `{customerID}-{category}-{name}` 三段前缀（category=liveface/aigc，未传 Name 时用 default 占位）做内部隔离，客户协议层不受影响（请求/响应 Name 始终
+         *       是客户原始 Name）。`Name` 长度上限 **50 字符**（火山 64 减去前缀余量）。
+         *     - LivenessFace 真人组由 `CreateVisualValidateSession` + H5 自动产生；
+         *       `CreateAssetGroup` 仅接受 `GroupType=AIGC`，传 `LivenessFace` 会被网关
+         *       拦截返 `InvalidParameter`。
+         *
+         *     **配额（Wave 2.5 + 2.9）**：每客户 50 个活跃组、50 个活跃素材。
+         */
+        post: operations["callPortraitAction"];
         delete?: never;
         options?: never;
         head?: never;
@@ -420,6 +527,17 @@ export interface components {
             /** Format: int64 */
             created?: number;
             owned_by?: string;
+            /**
+             * @description Top-level modality classification (R1 / 2026-05-14):
+             *     - `text` — text-only chat models
+             *     - `vision` — multimodal chat (image/video input, text output)
+             *     - `image` — image generation models (e.g. `gpt-image-2`)
+             *     - `video` — video generation models (e.g. `seedance` / `happyhorse`)
+             *     `/v1/models` now returns text + image + video models together; legacy clients
+             *     ignoring this field still work (additive).
+             * @enum {string}
+             */
+            modality?: "text" | "vision" | "image" | "video";
             display_name?: string;
             brand?: string;
             family?: string;
@@ -567,6 +685,66 @@ export interface components {
             items: components["schemas"]["VideoTaskResponse"][];
             total: number;
         };
+        ImageEditMultipartRequest: {
+            /** @example gpt-image-2 */
+            model: string;
+            /**
+             * Format: binary
+             * @description 源图，必填。≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`。
+             */
+            image: string;
+            /** @description 编辑提示词，必填。 */
+            prompt: string;
+            /**
+             * Format: binary
+             * @description 可选 mask 图；提供则按 mask_edit 处理（透明区域为编辑区）。≤ 25MB，同 MIME 约束。
+             */
+            mask?: string;
+            /**
+             * @default auto
+             * @enum {string}
+             */
+            size: "auto" | "1024x1024" | "1536x1024" | "1024x1536";
+            /**
+             * @default auto
+             * @enum {string}
+             */
+            quality: "auto" | "low" | "medium" | "high";
+            /**
+             * @default png
+             * @enum {string}
+             */
+            output_format: "png" | "jpeg" | "webp";
+            /**
+             * @description `transparent` 当前不支持。
+             * @default auto
+             * @enum {string}
+             */
+            background: "auto" | "opaque";
+            /**
+             * @default auto
+             * @enum {string}
+             */
+            moderation: "auto" | "low";
+            /** @description 透传上游用于滥用监控。 */
+            user?: string;
+        };
+        ImageVariationMultipartRequest: {
+            /** @example dall-e-2 */
+            model: string;
+            /**
+             * Format: binary
+             * @description 源图，必填。≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`。
+             */
+            image: string;
+            /**
+             * @default auto
+             * @enum {string}
+             */
+            size: "auto" | "1024x1024" | "1536x1024" | "1024x1536";
+            /** @description 透传上游用于滥用监控。 */
+            user?: string;
+        };
         ImageGenerationRequest: {
             /** @example gpt-image-2 */
             model: string;
@@ -690,6 +868,223 @@ export interface components {
             type?: string;
             message: string;
         };
+        /** @description 请求体由 `Action` query 参数决定。 */
+        PortraitActionRequest: components["schemas"]["CreateVisualValidateSessionRequest"] | components["schemas"]["GetVisualValidateResultRequest"] | components["schemas"]["PortraitIDRequest"] | components["schemas"]["ListAssetGroupsRequest"] | components["schemas"]["CreateAssetGroupRequest"] | components["schemas"]["UpdateAssetGroupRequest"] | components["schemas"]["CreateAssetRequest"] | components["schemas"]["ListAssetsRequest"] | components["schemas"]["UpdateAssetRequest"];
+        PortraitEnvelope: {
+            ResponseMetadata: components["schemas"]["PortraitResponseMetadata"];
+            Result?: (components["schemas"]["CreateVisualValidateSessionResult"] | components["schemas"]["GetVisualValidateResultResult"] | components["schemas"]["CreateAssetGroupResult"] | components["schemas"]["AssetGroupItem"] | components["schemas"]["ListAssetGroupsResult"] | components["schemas"]["CreateAssetResult"] | components["schemas"]["AssetItem"] | components["schemas"]["ListAssetsResult"] | Record<string, never>) | null;
+        };
+        PortraitResponseMetadata: {
+            RequestId: string;
+            Action: string;
+            /** @example 2024-01-01 */
+            Version: string;
+            /** @example ark */
+            Service: string;
+            /** @example cn-beijing */
+            Region: string;
+            Error?: {
+                Code: components["schemas"]["PortraitErrorCode"];
+                Message: string;
+            };
+        };
+        CreateVisualValidateSessionRequest: {
+            /**
+             * Format: uri
+             * @description 认证完成回调地址，推荐 HTTPS。
+             */
+            CallbackURL: string;
+            /** @default default */
+            ProjectName: string;
+        };
+        CreateVisualValidateSessionResult: {
+            /** @description 真人认证凭证，网关按 120 秒校验。 */
+            BytedToken: string;
+            /**
+             * Format: uri
+             * @description 火山 H5 认证页面链接。
+             */
+            H5Link: string;
+            /** Format: uri */
+            CallbackURL: string;
+        };
+        GetVisualValidateResultRequest: {
+            BytedToken: string;
+            /** @default default */
+            ProjectName: string;
+        };
+        GetVisualValidateResultResult: {
+            /** @example group-20260331145705-xxxxx */
+            GroupId: string;
+        };
+        /** @description Get/Delete 类 Action 的通用请求体。 */
+        PortraitIDRequest: {
+            Id: string;
+            /** @default default */
+            ProjectName: string;
+        };
+        /**
+         * @description 创建虚拟人像素材组（仅 AIGC 路径）。
+         *
+         *     **路径约束**：`GroupType` 必须为 `AIGC`。LivenessFace 真人组由
+         *     `CreateVisualValidateSession` + H5 自动产生，传 `LivenessFace` 会被网关
+         *     拦截返 `InvalidParameter`。
+         *
+         *     **Name mapping**：客户传入的 `Name` 仅暴露在客户协议层；落到火山侧时
+         *     会自动加 `{customerID}-{category}-{name}` 三段前缀（category=liveface/aigc，未传 Name 时用 default 占位）做内部隔离（客户视角看不到前缀）。
+         *
+         *     **配额**：每客户活跃组上限 50；`DeleteAssetGroup` 后立即释放。
+         */
+        CreateAssetGroupRequest: {
+            /** @description 仅支持 `AIGC`。 */
+            GroupType: components["schemas"]["PortraitGroupType"];
+            /** @description 客户原始 Name（≤50 字符；火山 64 字符上限 - {customerID}-{category}- 前缀余量）。 */
+            Name?: string;
+            Title?: string;
+            Description?: string;
+            /** @default default */
+            ProjectName: string;
+        };
+        /** @description 火山返回的 group id（注意字段名是 `Id` 不是 `GroupId`）。 */
+        CreateAssetGroupResult: {
+            /** @example group-20260518163348-xtzxl */
+            Id: string;
+        };
+        ListAssetGroupsRequest: {
+            Filter: {
+                Name?: string;
+                GroupIds?: string[];
+                GroupType: components["schemas"]["PortraitGroupType"];
+            };
+            /** @default 1 */
+            PageNumber: number;
+            /** @default 10 */
+            PageSize: number;
+            /** @default default */
+            ProjectName: string;
+        };
+        ListAssetGroupsResult: {
+            TotalCount: number;
+            Items: components["schemas"]["AssetGroupItem"][];
+            PageNumber: number;
+            PageSize: number;
+        };
+        UpdateAssetGroupRequest: components["schemas"]["PortraitIDRequest"] & {
+            /** @description 客户原始 Name（≤50 字符；网关会自动给火山侧加 {customerID}-{category}- 前缀，category=liveface/aigc）。 */
+            Name?: string;
+            Description?: string;
+        };
+        CreateAssetRequest: {
+            /** @example group-20260331145705-xxxxx */
+            GroupId: string;
+            /**
+             * Format: uri
+             * @description 火山可访问的公网素材 URL。
+             */
+            URL: string;
+            AssetType: components["schemas"]["PortraitAssetType"];
+            /** @description 客户原始 Name（≤50 字符；网关会自动给火山侧加 {customerID}-{category}- 前缀，category=liveface/aigc）。 */
+            Name?: string;
+            /** @default default */
+            ProjectName: string;
+        };
+        CreateAssetResult: {
+            /** @example asset-20260318035710-xxxxx */
+            Id: string;
+        };
+        ListAssetsRequest: {
+            Filter: {
+                Name?: string;
+                GroupIds?: string[];
+                GroupType: components["schemas"]["PortraitGroupType"];
+                Statuses?: components["schemas"]["PortraitAssetStatus"][];
+            };
+            /** @default 1 */
+            PageNumber: number;
+            /** @default 10 */
+            PageSize: number;
+            SortBy?: string;
+            /** @enum {string} */
+            SortOrder?: "Asc" | "Desc";
+            /** @default default */
+            ProjectName: string;
+        };
+        ListAssetsResult: {
+            TotalCount: number;
+            Items: components["schemas"]["AssetItem"][];
+            PageNumber: number;
+            PageSize: number;
+        };
+        UpdateAssetRequest: components["schemas"]["PortraitIDRequest"] & {
+            /** @description 客户原始 Name（≤50 字符；网关会自动给火山侧加 {customerID}-{category}- 前缀，category=liveface/aigc）。 */
+            Name?: string;
+        };
+        AssetGroupItem: {
+            Id?: string;
+            Name?: string;
+            Title?: string;
+            Description?: string;
+            GroupType?: components["schemas"]["PortraitGroupType"];
+            ProjectName?: string;
+            /** Format: date-time */
+            CreateTime?: string;
+            /** Format: date-time */
+            UpdateTime?: string;
+        };
+        AssetItem: {
+            Id?: string;
+            /** @description 当前 `ListAssets` 实现中可能为空；最新单素材信息以 `GetAsset` 为准。 */
+            GroupId?: string;
+            Name?: string;
+            AssetType?: components["schemas"]["PortraitAssetType"];
+            Status?: components["schemas"]["PortraitAssetStatus"];
+            /**
+             * Format: uri
+             * @description 火山签名 URL，官方示例为 12 小时有效。
+             */
+            URL?: string;
+            ProjectName?: string;
+            /** Format: date-time */
+            CreateTime?: string;
+            /** Format: date-time */
+            UpdateTime?: string;
+            FailedReason?: string;
+        };
+        /**
+         * @description `ResponseMetadata.Error.Code` 枚举值。网关业务错误用预定义码（PascalCase），
+         *     火山原错误码原样透传。
+         *
+         *     **网关业务错误码**：
+         *     - `Unauthorized` — API Key 无效或缺失
+         *     - `Forbidden` — 跨客户访问对方 GroupId / AssetId（**不暴露存在性**）
+         *     - `MissingParameter` / `MissingParameter.<field>` — 必填参数缺失
+         *     - `InvalidParameter` — 参数格式错（含 CreateAssetGroup 传 LivenessFace、Name 超 50 字符）
+         *     - `QuotaExceeded` — 活跃组 50/customer 或活跃素材 50/customer 超额
+         *     - `RateLimitExceeded` — 客户出方向限流
+         *     - `TokenExpired` — BytedToken 已过期（>120s，由网关本地 session 检查）
+         *     - `InvalidToken` — BytedToken 不存在 / 已使用 / 不属于本客户
+         *     - `ValidatePending` — H5 真人认证未完成 / 已过期 / 失败（上游 200 + GroupId=""）
+         *     - `NotFound` — 同租户素材已过期（区分跨租户 Forbidden）
+         *     - `UpstreamUnavailable` — 火山 5xx 或熔断
+         *
+         *     **火山原错误码（透传）**：
+         *     - `SubscriptionRequired` — 火山套餐订阅未生效
+         *     - `AIGCNotAvailable` — 当前权益不含 AIGC（2026-05-18 前的状态；现已开通）
+         *     - `InvalidAccessKey` — 火山 AK 在火山查不到（网关运维事故）
+         *     - 其他火山业务码原样
+         * @example Forbidden
+         */
+        PortraitErrorCode: string;
+        /**
+         * @description `LivenessFace` 真人组由 `CreateVisualValidateSession` + H5 自动产生；
+         *     `AIGC` 虚拟组由客户调用 `CreateAssetGroup` 主动创建（2026-05-18 解锁）。
+         * @enum {string}
+         */
+        PortraitGroupType: "LivenessFace" | "AIGC";
+        /** @enum {string} */
+        PortraitAssetType: "Image" | "Video" | "Audio";
+        /** @enum {string} */
+        PortraitAssetStatus: "Processing" | "Active" | "Failed";
         ErrorResponse: {
             error: {
                 code?: string;
@@ -1223,6 +1618,122 @@ export interface operations {
             500: components["responses"]["ServerError"];
         };
     };
+    createImageEdit: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 60 秒短期去重；命中时返回 `409 duplicate_request` 和原任务 ID。 */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["ImageEditMultipartRequest"];
+            };
+        };
+        responses: {
+            /** @description 任务已创建 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "igen_iedit_a7b68c38c4b7832ee386a13e",
+                     *       "status": "queued",
+                     *       "model": "gpt-image-2",
+                     *       "created_at": "2026-05-15T03:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ImageCreateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["InsufficientBalance"];
+            /** @description 上传文件过大（image / mask > 25MB） */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["ServerError"];
+            /** @description 网关 R2 storage 未配置或上游 storage 不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createImageVariation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 60 秒短期去重；命中时返回 `409 duplicate_request` 和原任务 ID。 */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["ImageVariationMultipartRequest"];
+            };
+        };
+        responses: {
+            /** @description 任务已创建 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "igen_ivar_a7b68c38c4b7832ee386a13e",
+                     *       "status": "queued",
+                     *       "model": "dall-e-2",
+                     *       "created_at": "2026-05-15T03:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ImageCreateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["InsufficientBalance"];
+            /** @description 上传文件过大（image > 25MB） */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["ServerError"];
+            /** @description 网关 R2 storage 未配置或上游 storage 不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     createImageGeneration: {
         parameters: {
             query?: never;
@@ -1306,6 +1817,38 @@ export interface operations {
                 };
             };
             410: components["responses"]["Gone"];
+            500: components["responses"]["ServerError"];
+        };
+    };
+    callPortraitAction: {
+        parameters: {
+            query: {
+                /** @description 火山 Action 名。 */
+                Action: "CreateVisualValidateSession" | "GetVisualValidateResult" | "CreateAssetGroup" | "GetAssetGroup" | "ListAssetGroups" | "UpdateAssetGroup" | "DeleteAssetGroup" | "CreateAsset" | "GetAsset" | "ListAssets" | "UpdateAsset" | "DeleteAsset";
+                /** @description 火山 Assets API 版本；当前仅支持 `2024-01-01`。 */
+                Version?: "2024-01-01";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortraitActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 火山风格 envelope；成功时包含 Result，业务失败时包含 ResponseMetadata.Error。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
             500: components["responses"]["ServerError"];
         };
     };
