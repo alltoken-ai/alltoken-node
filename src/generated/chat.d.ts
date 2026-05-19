@@ -357,6 +357,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/portrait/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload portrait asset (multipart)
+         * @description 把本地图片 multipart 上传到 AllToken R2 对象存储，再自动调火山 `CreateAsset`
+         *     以 R2 URL 注册成 portrait 素材。适合没自建 CDN 的小客户 / 联调场景；
+         *     有自建 CDN 的客户可继续用 `/portrait/?Action=CreateAsset` 直接传 URL。
+         *
+         *     工作流：multipart 上传 → R2 落盘 → 调火山 `CreateAsset(URL=R2_URL)` → 落 DB。
+         *     火山或 DB 失败时 R2 文件会进入孤儿状态，由 worker `portrait:orphan_scan`
+         *     凌晨清理。
+         *
+         *     **限制**：
+         *     - 文件类型：`image/jpeg`、`image/png`、`image/webp`（火山 LivenessFace 限制）
+         *     - 单文件大小：≤ 10 MB
+         *     - 配额：每客户 50 个活跃素材（跟 `/portrait/?Action=CreateAsset` 共享）
+         *
+         *     **多租户**：GroupId 必须属于当前 API Key 客户，否则返
+         *     `ResponseMetadata.Error.Code=Forbidden`，不暴露资源存在性。
+         */
+        post: operations["uploadPortraitAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1069,6 +1103,64 @@ export interface components {
         PortraitAssetType: "Image" | "Video" | "Audio";
         /** @enum {string} */
         PortraitAssetStatus: "Processing" | "Active" | "Failed";
+        /**
+         * @description `/portrait/upload` 的 multipart 表单字段。`file` 是二进制文件流；
+         *     其它字段都是普通 text part。
+         */
+        PortraitUploadRequest: {
+            /**
+             * Format: binary
+             * @description 图片文件，image/jpeg | image/png | image/webp，单文件 ≤ 10 MB。
+             */
+            file: string;
+            /**
+             * @description 火山 asset group ID（CreateAssetGroup 返回或 CreateVisualValidateSession 自动创建）。
+             * @example group-20260331145705-xxxxx
+             */
+            GroupId: string;
+            /** @description 素材名称；省略时网关自动生成 `uploaded-{unix_ts}`。客户协议层最大 50 字符。 */
+            Name?: string;
+            /**
+             * @description 素材类型；省略默认 `Image`。
+             * @default Image
+             */
+            AssetType: components["schemas"]["PortraitAssetType"];
+        };
+        PortraitUploadResult: {
+            /**
+             * @description 火山返回的 asset ID。
+             * @example asset-20260520120000-abcde
+             */
+            Id: string;
+            GroupId: string;
+            Name: string;
+            /** @example Image */
+            AssetType: string;
+            /**
+             * @description 落库时初始状态；后续状态可通过 `/portrait/?Action=GetAsset` 查询。
+             * @example processing
+             */
+            Status: string;
+            /**
+             * Format: uri
+             * @description R2 公开 URL，同时是传给火山 `CreateAsset(URL=...)` 的 URL。
+             */
+            UploadedURL: string;
+            /**
+             * @description R2 object key，用于排障 / 后续 lifecycle 操作。
+             * @example portrait-uploads/12/9a3fce.jpg
+             */
+            R2Key: string;
+        };
+        /**
+         * @description `/portrait/upload` 响应 envelope。结构与 `/portrait/` envelope 一致
+         *     （ResponseMetadata + 可选 Result + 业务失败时 ResponseMetadata.Error 不为空），
+         *     但 Result 是固定形状（不像 `/portrait/` 那样按 Action oneOf 多分支）。
+         */
+        PortraitUploadEnvelope: {
+            ResponseMetadata: components["schemas"]["PortraitResponseMetadata"];
+            Result?: components["schemas"]["PortraitUploadResult"];
+        };
         ErrorResponse: {
             error: {
                 code?: string;
@@ -1832,6 +1924,42 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["ServerError"];
+        };
+    };
+    uploadPortraitAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["PortraitUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description 上传 + 注册结果；envelope 风格，业务失败时 `ResponseMetadata.Error` 不为空。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortraitUploadEnvelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description multipart body 超过上限（10 MB + form fields buffer） */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             429: components["responses"]["RateLimited"];
             500: components["responses"]["ServerError"];
         };
