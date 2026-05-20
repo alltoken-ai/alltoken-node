@@ -315,6 +315,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/credits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get account credits
+         * @description 返回当前 API Key 关联账户的 USD credit 余额与 token grant 余额。
+         *
+         *     - `credit_balance` 是 USD 现金余额，前端展示用 `credit_balance_str`（`$x.xx`，2 位小数 + 美元符号）。
+         *     - `token_balance.total_remaining` 是所有有效（`remaining_tokens > 0`）的 grant token 总和。
+         *     - `token_balance.by_model[]` 按 `restrict_model` 维度聚合；`model=null` 表示通用 grant（可对任意模型生效）。
+         *
+         *     **双前缀挂载**：除 `/v1/credits` 外还兼容 `/api-chat/v1/credits`，响应完全一致。
+         */
+        get: operations["getCredits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List billing transactions
+         * @description 列出当前 API Key 关联账户的流水（充值 / 扣款 / 兑换码 / 退款 / 手续费 / 退手续费等全类型）。
+         *
+         *     **过滤 & 分页**：
+         *     - `limit` 默认 20，最大 100（超过自动截断）。
+         *     - `offset` 非负整数，超过 100 万返 400。
+         *     - `source` × `direction` 组合（如 `source=grant&direction=deduct`）解析为内部 `change_type` 集合；也可直接传 `change_type` 精确单选。
+         *     - `billing_type` 0=全部 / 1=Web / 2=API（注：当前 chat 服务只过滤数值，前端可按业务再聚合）。
+         *     - `date_from` / `date_to` 仅 `YYYY-MM-DD`；`date_from > date_to` 返 400。
+         *
+         *     **数值字段**：
+         *     - `tokens_delta` 已带正负号（add=正，deduct=负）。
+         *     - `cost` / `cost_str` 仅扣款/退款类有值；非扣款类（grant_add / exchange_in 等）返 `null`。
+         *     - `cost_str` 4 位小数 + $ 符号前置（如 `$-0.0123`，已处理负零边界为 `$0.0000`）。
+         *
+         *     **双前缀挂载**：除 `/v1/billing/transactions` 外还兼容 `/api-chat/v1/billing/transactions`，响应完全一致。
+         *
+         *     **i18n**：`description` / `billing_type_label` 按 `Accept-Language`（en / zh / zh-Hant / de / fr / ja / ko）切换翻译。
+         */
+        get: operations["listTransactions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/transactions/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get transaction by request_id
+         * @description 按 `request_id`（即上游模型调用的 `chatcmpl-id` 等同 ID）拉取**同一笔账单的多行 ledger**。
+         *     通常一次模型调用会产生 1~N 条 ledger（主扣款 + 手续费 + 缓存命中分摊等），本接口返回所有行 + 聚合 summary。
+         *
+         *     **响应字段语义**：
+         *     - `summary.total_tokens_delta` 全部 ledger 行 `tokens_delta` 之和（含正负）。
+         *     - `summary.total_cost` 全部 ledger 行 `cost` 绝对值聚合后带原方向符号。
+         *     - `summary.fee_rate` 手续费占比（仅含 fee 的笔有值）：`|sum(fee_cost)| / |sum(deduct_cost)|`。
+         *     - `summary.first_created_at` 最早一行的创建时间，便于排序。
+         *     - `ledgers[]` 数组按 `id ASC` 排，方便审计。
+         *
+         *     **错误码**：
+         *     - 404 跨 user 越权 / request_id 不存在 → `{"error":{"code":"not_found","message":"transaction not found"}}`（不区分两种语义，防资源存在性泄露）。
+         *     - 400 `request_id` 空 / 长度 > 256 → `invalid_request_id` i18n。
+         *
+         *     **双前缀挂载**：除 `/v1/billing/transactions/{request_id}` 外还兼容 `/api-chat/v1/billing/transactions/{request_id}`。
+         */
+        get: operations["getTransactionByRequestID"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/portrait/": {
         parameters: {
             query?: never;
@@ -1172,6 +1268,149 @@ export interface components {
                 task_id?: string;
             };
         };
+        CreditsResponse: {
+            /**
+             * @description 当前固定 USD
+             * @enum {string}
+             */
+            currency: "USD";
+            /**
+             * Format: double
+             * @description USD credit 现金余额（原始精度，可能含 6 位小数）
+             */
+            credit_balance: number;
+            /**
+             * @description 展示用余额字符串，`$x.xx` 2 位小数 + 美元符号；负值前缀 `-$`
+             * @example $9.88
+             */
+            credit_balance_str: string;
+            token_balance: components["schemas"]["TokenBalance"];
+        };
+        TokenBalance: {
+            /**
+             * Format: int64
+             * @description 所有 `remaining_tokens > 0` 的 grant token 总和
+             */
+            total_remaining: number;
+            by_model: components["schemas"]["TokenBalanceByModel"][];
+        };
+        TokenBalanceByModel: {
+            /** @description 限定模型 ID；`null` 表示通用 grant（可对任意模型生效） */
+            model: string | null;
+            /** Format: int64 */
+            remaining_tokens: number;
+        };
+        TransactionListResponse: {
+            data: {
+                summary: components["schemas"]["TransactionListSummary"];
+                /** @description 满足过滤条件的总行数（不受 limit/offset 影响），用于分页 UI */
+                total: number;
+                items: components["schemas"]["TransactionItem"][];
+            };
+        };
+        /** @description 按方向二分汇总当前页 items（不是 total 全集汇总） */
+        TransactionListSummary: {
+            /** Format: int64 */
+            tokens_added?: number;
+            /** Format: int64 */
+            tokens_deducted?: number;
+            /** Format: double */
+            cost_added?: number;
+            /** @example $0.00 */
+            cost_added_str?: string;
+            /** Format: double */
+            cost_deducted?: number;
+            /** @example $0.00 */
+            cost_deducted_str?: string;
+        };
+        TransactionItem: {
+            /** Format: int64 */
+            id: number;
+            /** @description 内部精确类型，如 `grant_add` / `grant_deduct` / `credit_add` / `credit_deduct` / `credit_refund` / `exchange_in` / `exchange_out` / `video_deduct` / `image_deduct` / `fee_deduct` / `fee_refund` */
+            change_type: string;
+            /** @description 已 i18n 翻译；按 `Accept-Language` 切换 */
+            description: string;
+            /** @enum {string} */
+            direction: "add" | "deduct" | "exchange" | "refund";
+            /** @enum {string} */
+            source: "grant" | "credit" | "exchange" | "video" | "image";
+            /** @description postpay / prepay（视 change_type 而定，可选） */
+            pay_mode?: string;
+            /** @description recharge / consumption / refund / fee / exchange */
+            category?: string;
+            /**
+             * Format: int64
+             * @description 带正负号（add=正，deduct=负）
+             */
+            tokens_delta: number;
+            /**
+             * Format: double
+             * @description 仅扣款/退款类有值；非扣款类返 null
+             */
+            cost: number | null;
+            /** @description 4 位小数 + $ 符号前置（负数 `-$0.0023`，负零已修复为 `$0.0000`） */
+            cost_str: string | null;
+            /** @description 0=未指定 / 1=Web / 2=API */
+            billing_type: number | null;
+            /** @description i18n 翻译（Web / API / CodePlan ...） */
+            billing_type_label?: string;
+            model_id?: string;
+            /** @description 模型展示名（来自 `or_models.display_name`，不存在时回落 model_id） */
+            model?: string;
+            /** Format: int64 */
+            grant_id?: number | null;
+            request_id?: string | null;
+            remark?: string;
+            details?: components["schemas"]["TransactionItemDetail"][];
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description deduct 类附带的逐 token-type 明细（input/output/cache/reasoning ...） */
+        TransactionItemDetail: {
+            /** @description input / output / cache_creation / cache_hit / reasoning ... */
+            token_type: string;
+            tokens: number;
+            /** Format: double */
+            price_per_1k: number;
+            price_per_1k_str: string;
+            /**
+             * Format: double
+             * @description deduct 取正，refund 透传原符号
+             */
+            cost: number;
+            cost_str: string;
+            /** @description 价格 fallback 时记录原始 token_type */
+            fallback_token_type?: string | null;
+            /** @description 价格表 miss 时置 1，便于排障 */
+            price_not_found?: number | null;
+        };
+        TransactionDetailResponse: {
+            request_id: string;
+            summary: components["schemas"]["TransactionDetailSummary"];
+            /** @description 同一 request_id 下的多行 ledger，按 `id ASC` 排 */
+            ledgers: components["schemas"]["TransactionItem"][];
+        };
+        TransactionDetailSummary: {
+            /** Format: int64 */
+            total_tokens_delta: number;
+            /**
+             * Format: double
+             * @description 所有 ledger 行 cost 聚合后的方向化总额
+             */
+            total_cost: number;
+            /** @description 4 位小数 + $ 符号前置 */
+            total_cost_str: string;
+            /**
+             * Format: double
+             * @description 手续费占比 `|sum(fee_cost)| / |sum(deduct_cost)|`，仅含 fee 的笔有值
+             */
+            fee_rate?: number | null;
+            model?: string;
+            billing_type?: number | null;
+            category?: string;
+            /** Format: date-time */
+            first_created_at?: string | null;
+        };
     };
     responses: {
         /** @description 请求参数错误 */
@@ -1894,6 +2133,94 @@ export interface operations {
             };
             410: components["responses"]["Gone"];
             500: components["responses"]["ServerError"];
+        };
+    };
+    getCredits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 余额信息 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["ServerError"];
+        };
+    };
+    listTransactions: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                /** @description 精确单选具体类型（与 source/direction 互斥；如 `grant_deduct` / `credit_add`） */
+                change_type?: string;
+                /** @description grant / credit / exchange / video / image */
+                source?: "grant" | "credit" | "exchange" | "video" | "image";
+                /** @description add / deduct / exchange / refund */
+                direction?: "add" | "deduct" | "exchange" | "refund";
+                /** @description 0=全部 / 1=Web / 2=API */
+                billing_type?: 0 | 1 | 2;
+                /** @description YYYY-MM-DD（含） */
+                date_from?: string;
+                /** @description YYYY-MM-DD（含）；`date_from > date_to` 返 400 */
+                date_to?: string;
+                /** @description 按 model 精确过滤 */
+                model?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 流水列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["ServerError"];
+        };
+    };
+    getTransactionByRequestID: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 网关在每次请求时下发的 `x-gateway-request-id`（或 `chatcmpl-id`） */
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 单笔账单详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionDetailResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     callPortraitAction: {
