@@ -192,7 +192,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description 余额不足 */
+        /** @description API 使用额度不足 */
         InsufficientBalance: {
             headers: {
                 [name: string]: unknown;

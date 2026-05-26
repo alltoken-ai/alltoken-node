@@ -3,6 +3,99 @@
 /* Regenerate via: npm run generate */
 
 export interface paths {
+    "/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List own submitted feedback
+         * @description 仅返本人提交的全部反馈（含私密）。支持 status/category/q/date_from/date_to/limit/offset/sort 过滤。
+         */
+        get: operations["listOwnFeedback"];
+        put?: never;
+        /**
+         * Submit AI assistant feedback
+         * @description AI 助手在踩到能力缺口时机器化提交反馈（plan §A.1）。
+         *     - 支持 11 个 category 枚举（见 GET /feedback/categories）
+         *     - 携 webhook_url 时首次返回明文 `ai_webhook_secret`（wsk_ 前缀 + 64 字符 hex）
+         *     - 跨用户 `evidence.request_ids` 静默丢弃，response 仅返 accepted/dropped count
+         *     - body ≤ 32KB，summary 10-200 字符，details ≤ 4000 字符
+         */
+        post: operations["submitFeedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feedback/{feedback_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get feedback by ID
+         * @description 权限规则：
+         *     - 自己提交的 → Self 视图（含完整字段，不含 ai_webhook_secret / 内部 triage_notes）
+         *     - 公开（is_public=true 且非 pending_public_review）→ Public 脱敏视图
+         *     - 其余 → 404（不区分"不存在"与"无权限"）
+         */
+        get: operations["getFeedback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feedback/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List public feedback
+         * @description 返 is_public=true AND pending_public_review=0 AND delsign=0 的反馈。严格脱敏：
+         *     不暴露 user_id / api_key_id_hint / webhook_url / request_ids / public_share_note / triage_notes 内部。
+         *     q 短查询 fallback：rune≤1 → 400；中文≤3 → LIKE；ASCII≤3 → BOOLEAN +q*；≥4 → NATURAL MODE。
+         */
+        get: operations["listPublicFeedback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feedback/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List feedback category enum metadata
+         * @description 返 11 个 category 元数据（含 i18n 描述），便于 AI 助手运行时拿枚举避免硬编码。
+         */
+        get: operations["listFeedbackCategories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chat/completions": {
         parameters: {
             query?: never;
@@ -323,10 +416,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get account credits
-         * @description 返回当前 API Key 关联账户的 USD credit 余额与 token grant 余额。
+         * 获取账户 API 使用额度
+         * @description 返回当前 API Key 关联账户的 USD API 使用额度与 token grant 额度。
          *
-         *     - `credit_balance` 是 USD 现金余额，前端展示用 `credit_balance_str`（`$x.xx`，2 位小数 + 美元符号）。
+         *     - `credit_balance` 是 USD API 使用额度数值，前端展示用 `credit_balance_str`（`$x.xx`，2 位小数 + 美元符号）。
          *     - `token_balance.total_remaining` 是所有有效（`remaining_tokens > 0`）的 grant token 总和。
          *     - `token_balance.by_model[]` 按 `restrict_model` 维度聚合；`model=null` 表示通用 grant（可对任意模型生效）。
          *
@@ -350,7 +443,7 @@ export interface paths {
         };
         /**
          * List billing transactions
-         * @description 列出当前 API Key 关联账户的流水（充值 / 扣款 / 兑换码 / 退款 / 手续费 / 退手续费等全类型）。
+         * @description 列出当前 API Key 关联账户的流水（API 使用购买 / 扣款 / 兑换码 / 退款 / 手续费 / 退手续费等全类型）。
          *
          *     **过滤 & 分页**：
          *     - `limit` 默认 20，最大 100（超过自动截断）。
@@ -491,6 +584,150 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        FeedbackSubmitRequest: {
+            /** @enum {string} */
+            category: "missing_endpoint" | "missing_capability" | "missing_model" | "model_quality" | "performance" | "reliability" | "pricing" | "documentation" | "error_message" | "business_gap" | "out_of_scope";
+            summary: string;
+            details?: string;
+            /** @description 触发上下文（model / endpoint / user_intent / tried_approach / wished_for 等）；JSON marshal ≤ 8KB */
+            context?: {
+                [key: string]: unknown;
+            };
+            evidence?: {
+                /** @description 跨用户的 request_id 服务端静默丢弃；response 仅返 accepted/dropped count */
+                request_ids?: string[];
+                frequency_estimate?: string;
+            };
+            competitor_examples?: string[];
+            suggested_solution?: string;
+            /** @enum {string} */
+            ai_priority?: "low" | "medium" | "high" | "critical";
+            /**
+             * @description 默认私密；PR-2 起，若 PII 扫描命中则强制 false + 进 admin 审核队列
+             * @default false
+             */
+            is_public: boolean;
+            public_share_note?: string;
+            ai_assistant: {
+                name: string;
+                version?: string;
+                /**
+                 * Format: uri
+                 * @description 必须 HTTPS；完整 SSRF + IP denylist + DNS rebinding 防护在 PR-2 worker 接通
+                 */
+                webhook_url?: string;
+            };
+        };
+        FeedbackSubmitResponse: {
+            /** @example fb_20260516_ABCDEFGH */
+            feedback_id: string;
+            /** @enum {string} */
+            status: "received" | "duplicate";
+            is_public?: boolean;
+            /** @description PR-2 起：PII 扫描命中时 true */
+            pending_public_review?: boolean;
+            /** @description PR-2 dedup 命中时指向已有 feedback_id */
+            dedup_with?: string | null;
+            /** @description 关联反馈的当前 status */
+            dedup_with_status?: string | null;
+            /** @description 本人命中并保留的 request_ids 数量 */
+            evidence_request_ids_accepted_count?: number;
+            /** @description 不命中静默丢弃的数量；不返具体哪些被丢，防跨用户探测 */
+            evidence_request_ids_dropped_count?: number;
+            /** Format: date-time */
+            acknowledged_at: string;
+            next_steps: string;
+            /**
+             * @description 仅当本次 Submit 携 `ai_assistant.webhook_url` 时返回（首次明文，一次性，
+             *     wsk_ 前缀 + 64 字符 hex）；后续 GET / list 永不再返。
+             *     AI 助手用此 secret 校验 webhook payload 的 HMAC-SHA256 签名（PR-2 接通）。
+             * @example wsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+             */
+            ai_webhook_secret?: string;
+        };
+        /** @description Self 视图：用户看自己提交的全部字段（不含 secret / 内部 triage_notes） */
+        FeedbackSelfItem: {
+            feedback_id?: string;
+            /** @description 末 4 位 mask（***1234） */
+            api_key_id_hint?: string;
+            ai_assistant?: {
+                name?: string;
+                version?: string;
+                webhook_url?: string;
+            };
+            category?: string;
+            summary?: string;
+            details?: string;
+            context?: {
+                [key: string]: unknown;
+            };
+            evidence?: {
+                request_ids?: string[];
+                frequency_estimate?: string;
+            };
+            competitor_examples?: string[];
+            suggested_solution?: string;
+            ai_priority?: string;
+            internal_priority?: string;
+            is_public?: boolean;
+            pending_public_review?: boolean;
+            public_share_note?: string;
+            /** Format: date-time */
+            published_at?: string | null;
+            /** @enum {string} */
+            status?: "received" | "triaging" | "planned" | "in_progress" | "shipped" | "wontfix" | "duplicate" | "needs_more_info";
+            /** Format: date-time */
+            status_changed_at?: string | null;
+            dedup_with?: string | null;
+            /** @description admin 显式标公开的备注（与内部 triage_notes 分离） */
+            triage_notes_public?: string;
+            resolution_url?: string;
+            webhook_failed?: boolean;
+            webhook_last_error?: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /**
+         * @description Public 视图：他人看公开反馈（严格脱敏）。
+         *     不暴露：user_id / api_key_id_hint / webhook_url / request_ids / public_share_note /
+         *     triage_notes 内部 / webhook_failed / webhook_last_error。
+         */
+        FeedbackPublicItem: {
+            feedback_id?: string;
+            /** @description 无 webhook_url 字段 */
+            ai_assistant?: {
+                name?: string;
+                version?: string;
+            };
+            category?: string;
+            summary?: string;
+            details?: string;
+            context?: {
+                [key: string]: unknown;
+            };
+            /** @description 无 request_ids 字段 */
+            evidence?: {
+                frequency_estimate?: string;
+            };
+            competitor_examples?: string[];
+            suggested_solution?: string;
+            ai_priority?: string;
+            internal_priority?: string;
+            /** @example true */
+            is_public?: boolean;
+            /** Format: date-time */
+            published_at?: string | null;
+            status?: string;
+            /** Format: date-time */
+            status_changed_at?: string | null;
+            dedup_with?: string | null;
+            triage_notes_public?: string;
+            resolution_url?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
         ChatCompletionRequest: {
             /** @example gpt-4o-mini */
             model: string;
@@ -815,10 +1052,16 @@ export interface components {
              */
             mask?: string;
             /**
-             * @default auto
-             * @enum {string}
+             * @description 单次生成张数，1-10。
+             * @default 1
              */
-            size: "auto" | "1024x1024" | "1536x1024" | "1024x1536";
+            n: number;
+            /**
+             * @description `auto` 或 `WIDTHxHEIGHT`；gpt-image-2 起支持任意分辨率（16 整除、最大 3840x2160、比例 1:3 ~ 3:1）。
+             * @default auto
+             * @example 1024x1024
+             */
+            size: string;
             /**
              * @default auto
              * @enum {string}
@@ -829,12 +1072,13 @@ export interface components {
              * @enum {string}
              */
             output_format: "png" | "jpeg" | "webp";
+            /** @description 仅 jpeg / webp 生效，0-100；未传则上游默认 100。 */
+            output_compression?: number;
             /**
-             * @description `transparent` 当前不支持。
              * @default auto
              * @enum {string}
              */
-            background: "auto" | "opaque";
+            background: "auto" | "opaque" | "transparent";
             /**
              * @default auto
              * @enum {string}
@@ -864,10 +1108,16 @@ export interface components {
             model: string;
             prompt: string;
             /**
-             * @default auto
-             * @enum {string}
+             * @description 单次生成张数，1-10。
+             * @default 1
              */
-            size: "auto" | "1024x1024" | "1536x1024" | "1024x1536";
+            n: number;
+            /**
+             * @description `auto` 或 `WIDTHxHEIGHT`；gpt-image-2 起支持任意分辨率（16 整除、最大 3840x2160、比例 1:3 ~ 3:1）。
+             * @default auto
+             * @example 1024x1024
+             */
+            size: string;
             /**
              * @default auto
              * @enum {string}
@@ -878,12 +1128,13 @@ export interface components {
              * @enum {string}
              */
             output_format: "png" | "jpeg" | "webp";
+            /** @description 仅 jpeg / webp 生效，0-100；未传则上游默认 100。 */
+            output_compression?: number;
             /**
-             * @description `transparent` 当前不支持。
              * @default auto
              * @enum {string}
              */
-            background: "auto" | "opaque";
+            background: "auto" | "opaque" | "transparent";
             /**
              * @default auto
              * @enum {string}
@@ -1276,11 +1527,11 @@ export interface components {
             currency: "USD";
             /**
              * Format: double
-             * @description USD credit 现金余额（原始精度，可能含 6 位小数）
+             * @description USD API 使用额度数值（原始精度，可能含 6 位小数）
              */
             credit_balance: number;
             /**
-             * @description 展示用余额字符串，`$x.xx` 2 位小数 + 美元符号；负值前缀 `-$`
+             * @description 展示用 API 使用额度字符串，`$x.xx` 2 位小数 + 美元符号；负值前缀 `-$`
              * @example $9.88
              */
             credit_balance_str: string;
@@ -1326,7 +1577,7 @@ export interface components {
         TransactionItem: {
             /** Format: int64 */
             id: number;
-            /** @description 内部精确类型，如 `grant_add` / `grant_deduct` / `credit_add` / `credit_deduct` / `credit_refund` / `exchange_in` / `exchange_out` / `video_deduct` / `image_deduct` / `fee_deduct` / `fee_refund` */
+            /** @description API 返回的旧版内部精确类型，如 `grant_add` / `grant_deduct` / `credit_add` / `credit_deduct` / `credit_refund` / `exchange_in` / `exchange_out` / `video_deduct` / `image_deduct` / `fee_deduct` / `fee_refund` */
             change_type: string;
             /** @description 已 i18n 翻译；按 `Accept-Language` 切换 */
             description: string;
@@ -1336,7 +1587,7 @@ export interface components {
             source: "grant" | "credit" | "exchange" | "video" | "image";
             /** @description postpay / prepay（视 change_type 而定，可选） */
             pay_mode?: string;
-            /** @description recharge / consumption / refund / fee / exchange */
+            /** @description API 返回的旧版 category 值：recharge / consumption / refund / fee / exchange */
             category?: string;
             /**
              * Format: int64
@@ -1431,7 +1682,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description 余额不足（网关扩展的 402） */
+        /** @description API 使用额度不足（网关扩展的 402） */
         InsufficientBalance: {
             headers: {
                 [name: string]: unknown;
@@ -1477,13 +1728,213 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        FeedbackCategory: "missing_endpoint" | "missing_capability" | "missing_model" | "model_quality" | "performance" | "reliability" | "pricing" | "documentation" | "error_message" | "business_gap" | "out_of_scope";
+        FeedbackStatus: "received" | "triaging" | "planned" | "in_progress" | "shipped" | "wontfix" | "duplicate" | "needs_more_info";
+        /** @description 关键字搜索 summary+details；rune ≤ 1 返 400 invalid_q */
+        FeedbackQ: string;
+        /** @description YYYY-MM-DD（UTC midnight） */
+        FeedbackDateFrom: string;
+        /** @description YYYY-MM-DD（UTC midnight，exclusive 上限） */
+        FeedbackDateTo: string;
+        FeedbackSort: "created_desc" | "created_asc" | "status_changed_desc";
+        FeedbackLimit: number;
+        FeedbackOffset: number;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listOwnFeedback: {
+        parameters: {
+            query?: {
+                category?: components["parameters"]["FeedbackCategory"];
+                status?: components["parameters"]["FeedbackStatus"];
+                /** @description 关键字搜索 summary+details；rune ≤ 1 返 400 invalid_q */
+                q?: components["parameters"]["FeedbackQ"];
+                /** @description YYYY-MM-DD（UTC midnight） */
+                date_from?: components["parameters"]["FeedbackDateFrom"];
+                /** @description YYYY-MM-DD（UTC midnight，exclusive 上限） */
+                date_to?: components["parameters"]["FeedbackDateTo"];
+                sort?: components["parameters"]["FeedbackSort"];
+                limit?: components["parameters"]["FeedbackLimit"];
+                offset?: components["parameters"]["FeedbackOffset"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            total?: number;
+                            items?: components["schemas"]["FeedbackSelfItem"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    submitFeedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackSubmitResponse"];
+                };
+            };
+            /** @description 字段校验失败（invalid_category / summary_too_short / summary_too_long / invalid_webhook_url / payload_too_large / malformed_json / 等） */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 缺少或非法 API Key */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description AI 助手在黑名单（ai_assistant_blocked，PR-2 接通） */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 超过 50/天/key 限制（PR-2 接通） */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getFeedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedback_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Self / Public 视图 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 不存在或无权限（feedback_not_found） */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listPublicFeedback: {
+        parameters: {
+            query?: {
+                category?: components["parameters"]["FeedbackCategory"];
+                status?: components["parameters"]["FeedbackStatus"];
+                /** @description 关键字搜索 summary+details；rune ≤ 1 返 400 invalid_q */
+                q?: components["parameters"]["FeedbackQ"];
+                /** @description YYYY-MM-DD（UTC midnight） */
+                date_from?: components["parameters"]["FeedbackDateFrom"];
+                /** @description YYYY-MM-DD（UTC midnight，exclusive 上限） */
+                date_to?: components["parameters"]["FeedbackDateTo"];
+                sort?: components["parameters"]["FeedbackSort"];
+                limit?: components["parameters"]["FeedbackLimit"];
+                offset?: components["parameters"]["FeedbackOffset"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            total?: number;
+                            items?: components["schemas"]["FeedbackPublicItem"][];
+                        };
+                    };
+                };
+            };
+            /** @description 非法过滤参数（invalid_category / invalid_status / invalid_sort / invalid_q / invalid_date_range / invalid_limit / invalid_offset） */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listFeedbackCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            items?: {
+                                value?: string;
+                                name?: string;
+                                description?: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+    };
     createChatCompletion: {
         parameters: {
             query?: never;
@@ -2144,7 +2595,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 余额信息 */
+            /** @description API 使用额度信息 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2162,9 +2613,9 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
-                /** @description 精确单选具体类型（与 source/direction 互斥；如 `grant_deduct` / `credit_add`） */
+                /** @description API 返回的旧版 change_type 值，可精确单选（与 source/direction 互斥；如 `grant_deduct` / `credit_add`） */
                 change_type?: string;
-                /** @description grant / credit / exchange / video / image */
+                /** @description API 返回的旧版 source 值：grant / credit / exchange / video / image */
                 source?: "grant" | "credit" | "exchange" | "video" | "image";
                 /** @description add / deduct / exchange / refund */
                 direction?: "add" | "deduct" | "exchange" | "refund";
