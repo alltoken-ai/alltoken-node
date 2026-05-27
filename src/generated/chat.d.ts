@@ -898,6 +898,104 @@ export interface components {
             description?: string;
             input_modalities?: string[];
             output_modalities?: string[];
+            /**
+             * @description Video model capability hints, only present in /videos/models responses (omitempty).
+             *     Frontend uses this to render form controls; falls back to hardcoded defaults when absent.
+             */
+            capabilities?: components["schemas"]["VideoCapabilities"];
+        };
+        /**
+         * @description Video model capability hints for /videos/models. These are UI hints, not
+         *     server-side validation constraints. Models not in the whitelist omit this
+         *     field (omitempty); the frontend falls back to hardcoded defaults.
+         */
+        VideoCapabilities: {
+            /** @description Aspect ratio config; values=null means UI hides the ratio control */
+            ratios?: {
+                /**
+                 * @example [
+                 *       "16:9",
+                 *       "9:16",
+                 *       "4:3",
+                 *       "3:4",
+                 *       "21:9",
+                 *       "1:1"
+                 *     ]
+                 */
+                values?: string[] | null;
+                /** @example 16:9 */
+                default?: string;
+            };
+            /** @description Resolution config; values=null means single-price (UI hides control) */
+            resolutions?: {
+                /**
+                 * @example [
+                 *       "480p",
+                 *       "720p",
+                 *       "1080p"
+                 *     ]
+                 */
+                values?: string[] | null;
+                /** @example 720p */
+                default?: string;
+            };
+            /**
+             * @description Duration constraint; null means upstream-adaptive (e.g. happyhorse-1.0-video-edit).
+             *     type=range: continuous integer range; type=enum: fixed values.
+             */
+            duration?: {
+                /** @enum {string} */
+                type?: "range" | "enum";
+                /** @description Present when type=enum */
+                values?: number[];
+                /** @description Present when type=range */
+                min?: number;
+                /** @description Present when type=range */
+                max?: number;
+                /** @description Present when type=range */
+                step?: number;
+                default?: number;
+                /** @description Whether duration=-1 (auto) is supported */
+                supports_auto?: boolean;
+            } | null;
+            /** @description Frame count constraint; null means not supported (only seedance-1.0-pro is non-null) */
+            frames?: {
+                min?: number;
+                max?: number;
+                step?: number;
+                base?: number;
+            } | null;
+            /** @description UI feature flags (hand-maintained; not server-side enforced) */
+            features?: {
+                generate_audio?: boolean;
+                return_last_frame?: boolean;
+                camera_fixed?: boolean;
+                watermark?: boolean;
+                seed?: boolean;
+                draft?: boolean;
+                service_tier_flex?: boolean;
+                tools_web_search?: boolean;
+            };
+            /** @description Prompt constraint; null means no gateway-level limit (e.g. Seedance) */
+            prompt?: {
+                /** @description Max prompt length in rune count */
+                max_length?: number;
+            } | null;
+            /** @description Multimodal input constraint; null means text-only / no constraint */
+            content?: {
+                image_count?: {
+                    min?: number;
+                    max?: number;
+                };
+                video_count?: {
+                    min?: number;
+                    max?: number;
+                };
+                /** @description Allowed content item roles; null means any role accepted */
+                allowed_roles?: string[] | null;
+            } | null;
+            /** @description Supported input type identifiers (e.g. text, image_first_frame, video_reference) */
+            input_types?: string[];
         };
         VideoGenerationRequest: {
             /** @example seedance-1.5-pro */
@@ -2128,7 +2226,58 @@ export interface operations {
                      *           ],
                      *           "output_modalities": [
                      *             "video"
-                     *           ]
+                     *           ],
+                     *           "capabilities": {
+                     *             "ratios": {
+                     *               "values": [
+                     *                 "16:9",
+                     *                 "9:16",
+                     *                 "4:3",
+                     *                 "3:4",
+                     *                 "21:9",
+                     *                 "1:1",
+                     *                 "adaptive"
+                     *               ],
+                     *               "default": "16:9"
+                     *             },
+                     *             "resolutions": {
+                     *               "values": [
+                     *                 "480p",
+                     *                 "720p",
+                     *                 "1080p"
+                     *               ],
+                     *               "default": "720p"
+                     *             },
+                     *             "duration": {
+                     *               "type": "range",
+                     *               "min": 4,
+                     *               "max": 15,
+                     *               "default": 5,
+                     *               "supports_auto": true
+                     *             },
+                     *             "frames": null,
+                     *             "features": {
+                     *               "generate_audio": true,
+                     *               "return_last_frame": true,
+                     *               "camera_fixed": true,
+                     *               "watermark": true,
+                     *               "seed": true,
+                     *               "draft": false,
+                     *               "service_tier_flex": false,
+                     *               "tools_web_search": true
+                     *             },
+                     *             "prompt": null,
+                     *             "content": null,
+                     *             "input_types": [
+                     *               "text",
+                     *               "image_first_frame",
+                     *               "image_first_last_frame",
+                     *               "image_reference",
+                     *               "video_reference",
+                     *               "draft_task",
+                     *               "multimodal"
+                     *             ]
+                     *           }
                      *         }
                      *       ]
                      *     }
