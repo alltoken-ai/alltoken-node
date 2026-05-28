@@ -1202,8 +1202,11 @@ export interface components {
             user?: string;
         };
         ImageGenerationRequest: {
-            /** @example gpt-image-2 */
-            model: string;
+            /**
+             * @example wan2.7-image
+             * @enum {string}
+             */
+            model: "gpt-image-2" | "wan2.7-image" | "wan2.7-image-pro";
             prompt: string;
             /**
              * @description 单次生成张数，1-10。
