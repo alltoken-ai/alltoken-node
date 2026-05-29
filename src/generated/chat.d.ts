@@ -206,6 +206,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audio/speech": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create speech audio
+         * @description OpenAI-compatible text-to-speech endpoint. The first release supports synchronous binary responses.
+         *     `stream=true` is rejected, `speed` must be 1.0, and `response_format` supports `wav`, `pcm`, and `mp3`.
+         */
+        post: operations["createSpeech"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audio/voices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List audio voices
+         * @description Returns builtin voices plus the current user's cloned/designed voices only.
+         */
+        get: operations["listAudioVoices"];
+        put?: never;
+        /**
+         * Create an audio voice task
+         * @description Creates a voice clone or voice design task. Clone requests must include explicit consent and base64 audio.
+         *     Remote sample URLs are rejected to avoid SSRF. Use `Idempotency-Key` for 24-hour request deduplication.
+         */
+        post: operations["createAudioVoiceTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audio/voices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get audio voice task status
+         * @description Returns queued/running/completed/failed task state for the current user. Cross-user task IDs return 404.
+         *     Completed task sample URLs expire; after expiry the endpoint returns 410 while the voice_id remains usable.
+         */
+        get: operations["getAudioVoiceTask"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/images/models": {
         parameters: {
             query?: never;
@@ -408,7 +475,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/credits": {
+    "/usage": {
         parameters: {
             query?: never;
             header?: never;
@@ -419,13 +486,13 @@ export interface paths {
          * 获取账户 API 使用额度
          * @description 返回当前 API Key 关联账户的 USD API 使用额度与 token grant 额度。
          *
-         *     - `credit_balance` 是 USD API 使用额度数值，前端展示用 `credit_balance_str`（`$x.xx`，2 位小数 + 美元符号）。
-         *     - `token_balance.total_remaining` 是所有有效（`remaining_tokens > 0`）的 grant token 总和。
-         *     - `token_balance.by_model[]` 按 `restrict_model` 维度聚合；`model=null` 表示通用 grant（可对任意模型生效）。
+         *     - `usage_quota` 是 USD API 使用额度数值，前端展示用 `usage_quota_str`（`$x.xx`，2 位小数 + 美元符号）。
+         *     - `token_quota.total_remaining` 是所有有效（`remaining_tokens > 0`）的 grant token 总和。
+         *     - `token_quota.by_model[]` 按 `restrict_model` 维度聚合；`model=null` 表示通用 grant（可对任意模型生效）。
          *
-         *     **双前缀挂载**：除 `/v1/credits` 外还兼容 `/api-chat/v1/credits`，响应完全一致。
+         *     **双前缀挂载**：除 `/v1/usage` 外还兼容 `/api-chat/v1/usage`，响应完全一致。
          */
-        get: operations["getCredits"];
+        get: operations["getUsage"];
         put?: never;
         post?: never;
         delete?: never;
@@ -728,6 +795,94 @@ export interface components {
             /** Format: date-time */
             created_at?: string;
         };
+        TTSSpeechRequest: {
+            /** @example mimo-v2.5-tts */
+            model: string;
+            /** @example 你好，欢迎使用 AllToken。 */
+            input: string;
+            voice: components["schemas"]["VoiceField"];
+            /**
+             * @description First release accepts wav/pcm/mp3; opus/aac/flac return 400.
+             * @default wav
+             * @enum {string}
+             */
+            response_format: "wav" | "pcm" | "mp3" | "opus" | "aac" | "flac";
+            /**
+             * @description Must be 1.0 in the first release; other values return 422.
+             * @default 1
+             */
+            speed: number;
+            /**
+             * @description true is not supported in the first release.
+             * @default false
+             */
+            stream: boolean;
+        };
+        /** @description Builtin voice string, gateway voice_id string, or OpenAI-style {id} object. */
+        VoiceField: string | {
+            /** @example voice_abc123 */
+            id: string;
+        };
+        AudioVoiceListResponse: {
+            /** @enum {string} */
+            object: "list";
+            data: components["schemas"]["AudioVoiceObject"][];
+        };
+        AudioVoiceObject: {
+            /** @example alloy */
+            id: string;
+            /** @enum {string} */
+            object: "audio.voice";
+            /** @example Alloy */
+            name: string;
+            /** @example en-US */
+            language?: string;
+            /** @enum {string} */
+            source: "builtin" | "clone" | "design";
+            /** Format: int64 */
+            created_at: number;
+        };
+        VoiceTaskCreateRequest: {
+            /** @enum {string} */
+            model: "mimo-v2.5-tts-voiceclone" | "mimo-v2.5-tts-voicedesign";
+            name: string;
+            /** @description Clone only. Base64 audio sample, decoded size <= 10 MiB, MIME allowlist wav/mp3/mp4/m4a. */
+            sample_audio_base64?: string;
+            /** @description Rejected by the server; remote samples are not supported. */
+            sample_audio_url?: string;
+            sample_text?: string;
+            /** @description Voice design prompt. */
+            description?: string;
+            /** @example zh-CN */
+            language?: string;
+            /** @description Clone requests must set consent=true. */
+            consent?: boolean;
+        };
+        VoiceTaskResponse: {
+            /** @example voice_task_abc123 */
+            id: string;
+            /** @enum {string} */
+            object: "audio.voice.task";
+            /** @enum {string} */
+            status: "queued" | "running" | "completed" | "failed" | "canceled";
+            /** @example mimo-v2.5-tts-voiceclone */
+            model: string;
+            name?: string;
+            /** Format: int64 */
+            created_at: number;
+            /** @example voice_abc123 */
+            voice_id?: string;
+            /** Format: uri */
+            sample_url?: string;
+            /** Format: date-time */
+            sample_url_expires_at?: string;
+            error?: components["schemas"]["VoiceTaskError"];
+        };
+        VoiceTaskError: {
+            type?: string;
+            code?: string;
+            message?: string;
+        };
         ChatCompletionRequest: {
             /** @example gpt-4o-mini */
             model: string;
@@ -874,7 +1029,7 @@ export interface components {
         ModelInfo: {
             id: string;
             /** @enum {string} */
-            object: "model" | "video" | "image";
+            object: "model" | "video" | "image" | "audio";
             /** Format: int64 */
             created?: number;
             owned_by?: string;
@@ -888,7 +1043,7 @@ export interface components {
              *     ignoring this field still work (additive).
              * @enum {string}
              */
-            modality?: "text" | "vision" | "image" | "video";
+            modality?: "text" | "vision" | "image" | "video" | "audio";
             display_name?: string;
             brand?: string;
             family?: string;
@@ -1620,7 +1775,7 @@ export interface components {
                 task_id?: string;
             };
         };
-        CreditsResponse: {
+        UsageResponse: {
             /**
              * @description 当前固定 USD
              * @enum {string}
@@ -1630,13 +1785,13 @@ export interface components {
              * Format: double
              * @description USD API 使用额度数值（原始精度，可能含 6 位小数）
              */
-            credit_balance: number;
+            usage_quota: number;
             /**
              * @description 展示用 API 使用额度字符串，`$x.xx` 2 位小数 + 美元符号；负值前缀 `-$`
              * @example $9.88
              */
-            credit_balance_str: string;
-            token_balance: components["schemas"]["TokenBalance"];
+            usage_quota_str: string;
+            token_quota: components["schemas"]["TokenBalance"];
         };
         TokenBalance: {
             /**
@@ -1794,6 +1949,33 @@ export interface components {
         };
         /** @description 超出限流 */
         RateLimited: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description 超出限流 */
+        TooManyRequests: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description 请求体或样本过大 */
+        PayloadTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description 请求语义校验失败 */
+        UnprocessableEntity: {
             headers: {
                 [name: string]: unknown;
             };
@@ -2291,6 +2473,127 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    createSpeech: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "model": "mimo-v2.5-tts",
+                 *       "input": "你好，欢迎使用 AllToken。",
+                 *       "voice": "mimo:default",
+                 *       "response_format": "wav",
+                 *       "speed": 1
+                 *     }
+                 */
+                "application/json": components["schemas"]["TTSSpeechRequest"];
+            };
+        };
+        responses: {
+            /** @description Binary audio bytes */
+            200: {
+                headers: {
+                    "X-Request-Id"?: string;
+                    "X-Characters-Count"?: number;
+                    "X-Voice-Id"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/wav": string;
+                    "audio/L16; rate=24000": string;
+                    "audio/mpeg": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listAudioVoices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Audio voice list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AudioVoiceListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createAudioVoiceTask: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 24-hour idempotency key for voice task creation. */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceTaskCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Voice task accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceTaskResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    getAudioVoiceTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @example voice_task_abc123 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Voice task state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceTaskResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            410: components["responses"]["Gone"];
+        };
+    };
     listImageModels: {
         parameters: {
             query?: never;
@@ -2738,7 +3041,7 @@ export interface operations {
             500: components["responses"]["ServerError"];
         };
     };
-    getCredits: {
+    getUsage: {
         parameters: {
             query?: never;
             header?: never;
@@ -2753,7 +3056,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CreditsResponse"];
+                    "application/json": components["schemas"]["UsageResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
