@@ -1275,7 +1275,7 @@ export interface components {
             /** @description 是否固定镜头，默认 false；仅 seedance-1.0-pro / 1.5-pro 支持 */
             camera_fixed?: boolean;
             /**
-             * @description 生成视频是否加水印，默认 false
+             * @description 生成视频是否加水印。不传跟随上游默认，传值显式控制
              * @default false
              */
             watermark: boolean;
