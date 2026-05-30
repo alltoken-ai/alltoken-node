@@ -252,6 +252,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audio/voices/upload-presign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create R2 upload presign for voice sample
+         * @description Issues a short-lived (300s) presigned R2 PUT URL for uploading a voice clone sample
+         *     (up to 10 MiB, audio/wav only in this release). Client uploads directly to R2 with
+         *     Content-Type, Content-MD5 and Content-Length headers as instructed, then submits the
+         *     returned `upload_id` to `POST /audio/voices` instead of inlining base64.
+         *     Avoids 10 MiB base64 round-trips through the gateway. MP3/M4A support will land in a
+         *     follow-up release.
+         *     Error codes (returned inside ErrorResponse.error.code):
+         *     `invalid_purpose`, `invalid_content_type`, `invalid_content_md5`,
+         *     `invalid_checksum_sha256`, `payload_too_large`, `quota_exceeded`, `presign_failed`.
+         */
+        post: operations["createVoiceSampleUploadPresign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audio/voices/{id}": {
         parameters: {
             query?: never;
@@ -795,6 +823,49 @@ export interface components {
             /** Format: date-time */
             created_at?: string;
         };
+        TTSUploadPresignRequest: {
+            /**
+             * @description Strict allowlist; only `voice_clone_sample` is accepted in this release.
+             * @enum {string}
+             */
+            purpose: "voice_clone_sample";
+            /**
+             * @description Strict allowlist; audio/wav only (MP3/M4A in a follow-up release).
+             * @enum {string}
+             */
+            content_type: "audio/wav";
+            /** @description Byte length of the file to upload. Hard cap 10 MiB (10485760). */
+            content_length: number;
+            /** @description Base64 MD5 (16-byte digest -> 24 chars). Enforced by R2 PUT. */
+            content_md5: string;
+            /** @description Lowercase hex SHA-256 (64 chars). Recomputed server-side at commit. */
+            checksum_sha256: string;
+        };
+        TTSUploadPresignResponse: {
+            /**
+             * Format: uri
+             * @description Pre-signed R2 PUT URL valid for `expires_in` seconds.
+             */
+            upload_url: string;
+            /** @enum {string} */
+            method: "PUT";
+            /**
+             * @description Headers the client must send on the PUT. `Content-Length` is omitted on purpose
+             *     because browsers treat it as a forbidden header (set automatically by fetch/XHR).
+             */
+            required_headers: {
+                /** @example audio/wav */
+                "Content-Type": string;
+                /** @example 1B2M2Y8AsgTpgAmY7PhCfg== */
+                "Content-MD5": string;
+            };
+            /** @description Claim ID to pass back as `upload_id` when calling `POST /audio/voices`. */
+            upload_id: string;
+            /** @description Presign validity in seconds (300). */
+            expires_in: number;
+            /** @description Server-enforced upper bound on the upload size, in bytes (10485760). */
+            max_content_length: number;
+        };
         TTSSpeechRequest: {
             /** @example mimo-v2.5-tts */
             model: string;
@@ -846,6 +917,13 @@ export interface components {
             /** @enum {string} */
             model: "mimo-v2.5-tts-voiceclone" | "mimo-v2.5-tts-voicedesign";
             name: string;
+            /**
+             * @description PR-TTS-6 R2 direct-upload claim ID (recommended path, up to 10 MiB sample).
+             *     Mutually exclusive with multipart `sample_audio` and `sample_audio_base64`;
+             *     exclusivity check is only triggered when `upload_id` is present — legacy single-source
+             *     clients see zero behavior change.
+             */
+            upload_id?: string;
             /** @description Clone only. Base64 audio sample, decoded size <= 10 MiB, MIME allowlist wav/mp3/mp4/m4a. */
             sample_audio_base64?: string;
             /** @description Rejected by the server; remote samples are not supported. */
@@ -1194,8 +1272,12 @@ export interface components {
             input_has_video?: boolean;
             /** Format: int64 */
             seed?: number;
+            /** @description 是否固定镜头，默认 false；仅 seedance-1.0-pro / 1.5-pro 支持 */
             camera_fixed?: boolean;
-            /** @default false */
+            /**
+             * @description 生成视频是否加水印，默认 false
+             * @default false
+             */
             watermark: boolean;
             /** Format: uri */
             callback_url?: string;
@@ -2444,7 +2526,7 @@ export interface operations {
                      *             "features": {
                      *               "generate_audio": true,
                      *               "return_last_frame": true,
-                     *               "camera_fixed": true,
+                     *               "camera_fixed": false,
                      *               "watermark": true,
                      *               "seed": true,
                      *               "draft": false,
@@ -2560,6 +2642,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VoiceTaskResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createVoiceSampleUploadPresign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "purpose": "voice_clone_sample",
+                 *       "content_type": "audio/wav",
+                 *       "content_length": 524288,
+                 *       "content_md5": "1B2M2Y8AsgTpgAmY7PhCfg==",
+                 *       "checksum_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                 *     }
+                 */
+                "application/json": components["schemas"]["TTSUploadPresignRequest"];
+            };
+        };
+        responses: {
+            /** @description Presigned upload instructions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TTSUploadPresignResponse"];
                 };
             };
             400: components["responses"]["BadRequest"];
