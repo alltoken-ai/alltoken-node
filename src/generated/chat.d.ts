@@ -321,6 +321,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/uploads/presign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 创建媒体输入素材 R2 直传 presign
+         * @description 为图生图、图生视频、视频生视频、视频音频参考等输入素材签发短期 R2 PUT URL。
+         *     客户端按返回的 `required_headers` 直接 PUT 到 R2，再把 `upload_id` 提交给
+         *     `/images/edits`、`/images/variations` 或 `/videos/generations`。
+         *
+         *     presign URL 有效期 5 分钟；未绑定 claim 2 小时自动过期并删除临时对象；
+         *     任务成功、失败、取消或过期后，已绑定 active 输入对象会立即删除。该路径避免
+         *     大图片/视频字节穿过网关和 Cloudflare 边缘层。
+         */
+        post: operations["createMediaUploadPresign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/videos/generations": {
         parameters: {
             query?: never;
@@ -413,11 +439,12 @@ export interface paths {
         put?: never;
         /**
          * 创建图像编辑任务（i_edit / mask_edit）
-         * @description 基于源图（必填）+ prompt 创建图像编辑任务，请求体为 `multipart/form-data`。
-         *     - 不提供 `mask` 时按 i_edit（整图编辑）处理
-         *     - 提供 `mask` 时按 mask_edit（局部编辑）处理；`mask` 透明区域为编辑区
-         *     - 源图 / mask 各 ≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`
-         *     - 上游路径 `POST /v1/images/edits`；网关侧 24h R2 临时素材保留 + 任务结束 fail-soft 删除
+         * @description 基于源图（必填）+ prompt 创建图像编辑任务，仅支持 `application/json`
+         *     + `image_upload_id`。客户端 multipart/form-data 已下线；必须先走 `/uploads/presign` 直传 R2，再提交 JSON。
+         *     - 不提供 `mask_upload_id` 时按 i_edit（整图编辑）处理
+         *     - 提供 `mask_upload_id` 时按 mask_edit（局部编辑）处理；mask 透明区域为编辑区
+         *     - 源图 / mask 各 <= 25MB，MIME in `image/png` / `image/jpeg` / `image/webp`
+         *     - `upload_id` 未使用 claim 2 小时过期删除；任务成功 / 失败 / 取消后输入 active object 立即 fail-soft 删除
          *     - 返回任务 ID（前缀 `igen_iedit_` 或 `igen_mask_`），使用 `GET /images/generations/{id}` 轮询
          */
         post: operations["createImageEdit"];
@@ -438,10 +465,10 @@ export interface paths {
         put?: never;
         /**
          * 创建图像变体任务（variation）
-         * @description 基于源图（必填）创建图像变体任务，不接受 `prompt` / `mask`，请求体为 `multipart/form-data`。
-         *     - 上游路径 `POST /v1/images/variations`；仅 dall-e-2 等支持 variations 的模型有效，
-         *       不支持的模型上游返 4xx 错误透传到网关
-         *     - 源图 ≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`
+         * @description 基于源图（必填）创建图像变体任务，不接受 `prompt` / `mask`，仅支持
+         *     `application/json` + `image_upload_id`。客户端 multipart/form-data 已下线；必须先走 `/uploads/presign` 直传 R2，再提交 JSON。
+         *     - 上游路径 `POST /v1/images/variations`；仅支持 variations 的模型有效
+         *     - 源图 <= 25MB，MIME in `image/png` / `image/jpeg` / `image/webp`
          *     - 返回任务 ID（前缀 `igen_ivar_`），使用 `GET /images/generations/{id}` 轮询
          */
         post: operations["createImageVariation"];
@@ -497,6 +524,104 @@ export interface paths {
         get: operations["getImageGeneration"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/3d/generations/async": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 创建 3D 生成任务（推荐异步路径）
+         * @description 创建异步 3D 资产生成任务。返回任务 ID（HTTP 202 Accepted），使用 `GET /3d/generations/{id}` 轮询状态。
+         *
+         *     **模型矩阵**：
+         *     - `tripo-h3.1` / `tripo-p1.0`（阿里云百炼）：支持文生 / 单图 / 多图三模式，输出 PBR 模型 + 基础几何 + 预览图三 URL，2h 过期
+         *     - `seed3d-2.0`（火山方舟）：仅单图，输出单 zip URL（含 GLB/OBJ/USD/USDZ 任一），24h 过期
+         *
+         *     **input 三选一互斥**：`prompt` xor `image` xor `images`（按模型 capability 校验）。
+         *
+         *     **parameters.detail_level**：公共档位 `low` / `medium` / `high`（默 medium）。tripo-h3.1 接受全部三档；tripo-p1.0 不接受 high；seed3d-2.0 接受全部三档。
+         *
+         *     **Idempotency-Key**：可选，24h 内同 key 同 API Key 返既有任务 ID（不重复扣费/上游）。
+         */
+        post: operations["createAsync3DGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/3d/generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 创建 3D 生成任务（兼容路径）
+         * @description 与 `POST /3d/generations/async` 完全一致；新接入推荐使用 async 路径。
+         */
+        post: operations["create3DGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/3d/generations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询 3D 生成任务状态
+         * @description 查询任务状态：
+         *       - `queued` / `processing` / `cancelling`：仅返任务信封（无 assets）
+         *       - `completed` 且未过期：200 + assets[] + usage
+         *       - `completed` 但 URL 过期：**HTTP 410** + `status='completed'` + `is_expired=true` + `error.code='result_expired'`
+         *         （注：status 保留为 completed，不伪装为 expired；过期信号靠 HTTP 状态码 + is_expired 字段表达）
+         *       - `failed` / `cancelled` / `expired`：返 error.{code,message}，无 assets
+         *
+         *     鉴权：必须任务归属当前 API Key 所属 user；不匹配返 404（避免存在性泄漏）。
+         */
+        get: operations["get3DGeneration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/3d/generations/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 取消 3D 生成任务
+         * @description 仅 `queued` 与 `processing` 未首次轮询的任务可取消；其他状态返 `409 invalid_status`。
+         *     seed3d-2.0 调用上游 cancel；tripo 系列 v1 仅本地状态机 + 退款。
+         */
+        post: operations["cancel3DGeneration"];
         delete?: never;
         options?: never;
         head?: never;
@@ -822,6 +947,58 @@ export interface components {
             resolution_url?: string;
             /** Format: date-time */
             created_at?: string;
+        };
+        MediaUploadPresignRequest: {
+            /**
+             * @description 输入素材用途。claim 绑定时会按 endpoint 和字段再次校验 purpose，不能跨用途复用。
+             * @enum {string}
+             */
+            purpose: "image_edit_source" | "image_edit_mask" | "image_variation_source" | "video_input_image" | "video_input_video" | "video_input_audio";
+            /**
+             * @description 必须落在 purpose 对应白名单内；服务端 bind 时还会 HeadObject 复核真实类型。
+             * @enum {string}
+             */
+            content_type: "image/png" | "image/jpeg" | "image/webp" | "video/mp4" | "video/webm" | "video/quicktime" | "audio/wav" | "audio/mpeg" | "audio/mp4" | "audio/aac" | "audio/ogg" | "audio/webm";
+            /** @description 上传字节数；不同 purpose 有独立上限。 */
+            content_length: number;
+            /** @description Base64 MD5；R2 PUT 必须携带同值 Content-MD5。 */
+            content_md5: string;
+            /** @description Lowercase hex SHA-256；bind 时用于服务端一致性校验。 */
+            checksum_sha256: string;
+        };
+        MediaUploadPresignResponse: {
+            /**
+             * Format: uri
+             * @description 预签名 R2 PUT URL，仅在 `expires_in` 秒内有效；不要持久化或回显到日志。
+             */
+            upload_url: string;
+            /** @enum {string} */
+            method: "PUT";
+            required_headers: {
+                /** @example image/png */
+                "Content-Type": string;
+                /** @example 1B2M2Y8AsgTpgAmY7PhCfg== */
+                "Content-MD5": string;
+            };
+            /**
+             * @description 提交生成任务时使用的 claim ID；仅当前用户和当前 API Key 可绑定一次。
+             * @example upl_2f8bb7d7f4a24c3a8f4f8a7e
+             */
+            upload_id: string;
+            /** @description presign URL 有效秒数，当前为 300。 */
+            expires_in: number;
+            /**
+             * Format: date-time
+             * @description 未绑定 claim 的 UTC 过期时间；过期后可由 cleanup worker 删除临时对象。
+             */
+            claim_expires_at: string;
+            /** @description 当前 purpose 允许的最大上传字节数。 */
+            max_content_length: number;
+            /**
+             * Format: uri
+             * @description 调试用临时对象 URL；客户端不应提交该 URL，提交任务只使用 `upload_id`。
+             */
+            public_url?: string;
         };
         TTSUploadPresignRequest: {
             /**
@@ -1315,6 +1492,13 @@ export interface components {
             role?: "first_frame" | "last_frame" | "reference_image" | "reference_video" | "reference_audio";
             /** @description 简化格式（type=image/video/audio 时） */
             url?: string;
+            /**
+             * @description 由 `POST /uploads/presign` 返回的媒体输入 claim ID。简化格式中：
+             *     `type=image` 必须使用 `video_input_image`，`type=video` 必须使用
+             *     `video_input_video`，`type=audio` 必须使用 `video_input_audio`。
+             *     与同一 item 内的 URL 字段互斥；任务终态后输入对象会被删除。
+             */
+            upload_id?: string;
         };
         VideoTaskResponse: {
             /** @example vgen_01abc */
@@ -1371,28 +1555,18 @@ export interface components {
             items: components["schemas"]["VideoTaskResponse"][];
             total: number;
         };
-        ImageEditMultipartRequest: {
+        ImageEditUploadIDRequest: {
             /** @example gpt-image-2 */
             model: string;
-            /**
-             * Format: binary
-             * @description 源图，必填。≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`。
-             */
-            image: string;
+            /** @description `POST /uploads/presign` 以 `purpose=image_edit_source` 返回的 upload_id。 */
+            image_upload_id: string;
             /** @description 编辑提示词，必填。 */
             prompt: string;
-            /**
-             * Format: binary
-             * @description 可选 mask 图；提供则按 mask_edit 处理（透明区域为编辑区）。≤ 25MB，同 MIME 约束。
-             */
-            mask?: string;
-            /**
-             * @description 单次生成张数，1-10。
-             * @default 1
-             */
+            /** @description 可选 mask；必须来自 `purpose=image_edit_mask` 的 upload_id。 */
+            mask_upload_id?: string;
+            /** @default 1 */
             n: number;
             /**
-             * @description `auto` 或 `WIDTHxHEIGHT`；gpt-image-2 起支持任意分辨率（16 整除、最大 3840x2160、比例 1:3 ~ 3:1）。
              * @default auto
              * @example 1024x1024
              */
@@ -1407,7 +1581,6 @@ export interface components {
              * @enum {string}
              */
             output_format: "png" | "jpeg" | "webp";
-            /** @description 仅 jpeg / webp 生效，0-100；未传则上游默认 100。 */
             output_compression?: number;
             /**
              * @default auto
@@ -1419,23 +1592,18 @@ export interface components {
              * @enum {string}
              */
             moderation: "auto" | "low";
-            /** @description 透传上游用于滥用监控。 */
             user?: string;
         };
-        ImageVariationMultipartRequest: {
+        ImageVariationUploadIDRequest: {
             /** @example dall-e-2 */
             model: string;
-            /**
-             * Format: binary
-             * @description 源图，必填。≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`。
-             */
-            image: string;
+            /** @description `POST /uploads/presign` 以 `purpose=image_variation_source` 返回的 upload_id。 */
+            image_upload_id: string;
             /**
              * @default auto
              * @enum {string}
              */
             size: "auto" | "1024x1024" | "1536x1024" | "1024x1536";
-            /** @description 透传上游用于滥用监控。 */
             user?: string;
         };
         ImageGenerationRequest: {
@@ -1478,6 +1646,11 @@ export interface components {
              * @enum {string}
              */
             moderation: "auto" | "low";
+            /**
+             * Format: int64
+             * @description 仅 `wan2.7-image` / `wan2.7-image-pro` 生效，透传到 DashScope Wan `parameters.seed`；其它图像模型不保证生效。
+             */
+            seed?: number;
             /** @description 透传上游用于滥用监控。 */
             user?: string;
         };
@@ -1567,6 +1740,148 @@ export interface components {
             };
         };
         ImageError: {
+            code: string;
+            type?: string;
+            message: string;
+        };
+        ThreedGenerationRequest: {
+            /**
+             * @description 网关模型 ID（`tripo-h3.1` / `tripo-p1.0` / `seed3d-2.0`）
+             * @example tripo-h3.1
+             */
+            model: string;
+            input: components["schemas"]["ThreedInput"];
+            parameters?: components["schemas"]["ThreedParameters"];
+        };
+        /** @description 三选一互斥（prompt xor image xor images）；按模型 capability 校验，跨族错配返 400。 */
+        ThreedInput: {
+            /** @description 文生 3D 提示词（仅 tripo 支持） */
+            prompt?: string;
+            /**
+             * Format: uri
+             * @description 单图生 3D 图片 URL（tripo + seed3d 支持；仅 https，禁 base64，SSRF 黑名单校验）
+             */
+            image?: string;
+            /** @description 多图生 3D（仅 tripo 支持，2-4 张 URL） */
+            images?: string[];
+        };
+        /** @description 公共参数；不在模型 capability 接受集内的字段传入会返 400 `param_not_supported_for_model`（不静默忽略）。 */
+        ThreedParameters: {
+            /**
+             * @description 公共档位。
+             *     - seed3d-2.0：直接映射 `--subdivisionlevel low/medium/high`
+             *     - tripo-h3.1：low/medium → 上游 geometry_quality=standard；high → ultra
+             *     - tripo-p1.0：仅接受 low/medium（不接 high，上游无 ultra 档位）
+             * @default medium
+             * @enum {string}
+             */
+            detail_level: "low" | "medium" | "high";
+            /**
+             * @description 仅 tripo 系列；seed3d 传入返 400
+             * @default standard
+             * @enum {string}
+             */
+            texture_quality: "standard" | "detailed";
+            /**
+             * @description 是否生成 PBR 材质（仅 tripo）
+             * @default true
+             */
+            pbr: boolean;
+            /**
+             * @description 是否生成贴图（仅 tripo）
+             * @default true
+             */
+            texture: boolean;
+            /**
+             * @description 输出文件格式（仅 seed3d；tripo 固定 glb）
+             * @default glb
+             * @enum {string}
+             */
+            file_format: "glb" | "obj" | "usd" | "usdz";
+        };
+        ThreedGenerationResponse: {
+            /**
+             * @description 任务 ID，前缀 `td3d_`
+             * @example td3d_a1b2c3d4e5f6a7b8c9d0e1f2
+             */
+            id: string;
+            /** @enum {string} */
+            object: "threed.generation";
+            /**
+             * @description 注意：completed 任务过期时 status **保留为 completed**，过期信号通过 `is_expired=true` + HTTP 410 + `error.code=result_expired` 表达。
+             * @enum {string}
+             */
+            status: "queued" | "processing" | "cancelling" | "completed" | "failed" | "cancelled" | "expired";
+            model: string;
+            /** @enum {string} */
+            input_mode?: "text" | "single_image" | "multi_image";
+            /** @description 仅 status=completed 时填；按 model api_format 投影（tripo 3 资产 / seed3d 单 archive） */
+            assets?: components["schemas"]["ThreedAsset"][];
+            /**
+             * Format: date-time
+             * @description 顶层 expires_at = min(assets[].expires_at)
+             */
+            expires_at?: string;
+            /** @description 距离 expires_at 的剩余秒数 */
+            expires_in?: number;
+            /** @description 仅 completed 状态有意义；true 时 HTTP 410 + error.code=result_expired */
+            is_expired: boolean;
+            usage?: components["schemas"]["ThreedUsage"];
+            error?: components["schemas"]["ThreedError"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at?: string;
+            /** Format: date-time */
+            completed_at?: string;
+        };
+        ThreedAsset: {
+            /**
+             * @description 资产类型。OpenAPI 用 string 而非 enum（未来供应商可能新增 role）。已知值：
+             *     - `textured_model`：tripo PBR 带贴图模型
+             *     - `base_mesh`：tripo 基础几何无贴图
+             *     - `preview`：tripo 预览渲染图
+             *     - `archive`：seed3d zip（含 contained_formats[]）
+             */
+            role: string;
+            /** @description 文件格式（glb / png / zip / 未来 fbx / obj 等） */
+            format: string;
+            /**
+             * Format: uri
+             * @description 上游签名 URL 或固定 URL（无签名）；按 expires_at 失效
+             */
+            url: string;
+            /** @description MIME 类型（`model/gltf-binary` / `image/png` / `application/zip`） */
+            mime_type?: string;
+            /**
+             * Format: date-time
+             * @description 该 asset 的失效时间
+             */
+            expires_at?: string;
+            /** @description 仅 role=archive 填，描述压缩包内的文件格式（如 `[glb]`） */
+            contained_formats?: string[];
+        };
+        ThreedUsage: {
+            /** @enum {string} */
+            task_type?: "text_to_3d" | "image_to_3d";
+            /** @description 通常 1 */
+            count?: number;
+            /**
+             * @description 请求参数回显
+             * @enum {string}
+             */
+            detail_level?: "low" | "medium" | "high";
+            /** @description 仅 tripo */
+            texture_quality?: string;
+            /** @description 仅 seed3d */
+            file_format?: string;
+            /**
+             * Format: int64
+             * @description 仅 seed3d；火山按 token 计费的审计字段（v1 chat 侧按任务计费）
+             */
+            completion_tokens?: number;
+        };
+        ThreedError: {
             code: string;
             type?: string;
             message: string;
@@ -2758,6 +3073,35 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    createMediaUploadPresign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaUploadPresignRequest"];
+            };
+        };
+        responses: {
+            /** @description Presigned upload instructions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaUploadPresignResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["ServerError"];
+        };
+    };
     listVideoGenerations: {
         parameters: {
             query?: {
@@ -2970,7 +3314,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["ImageEditMultipartRequest"];
+                "application/json": components["schemas"]["ImageEditUploadIDRequest"];
             };
         };
         responses: {
@@ -3028,7 +3372,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["ImageVariationMultipartRequest"];
+                "application/json": components["schemas"]["ImageVariationUploadIDRequest"];
             };
         };
         responses: {
@@ -3158,6 +3502,159 @@ export interface operations {
             };
             410: components["responses"]["Gone"];
             500: components["responses"]["ServerError"];
+        };
+    };
+    createAsync3DGeneration: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 24h 短期去重；命中时直接返既有 task 的当前状态。 */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreedGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description 任务已入队，使用 `GET /3d/generations/{id}` 轮询 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreedGenerationResponse"];
+                };
+            };
+            /** @description 请求参数错误（含 param_not_supported_for_model / detail_level_not_supported / image_url_not_allowed / invalid_input_mode 等） */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 余额不足 */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 无可用供应商 / 计费未配置 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create3DGeneration: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreedGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description 任务已入队 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreedGenerationResponse"];
+                };
+            };
+        };
+    };
+    get3DGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 任务状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreedGenerationResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description 结果 URL 已过期（completed + is_expired=true） */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreedGenerationResponse"];
+                };
+            };
+        };
+    };
+    cancel3DGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已取消 + 全额退款 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreedGenerationResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description 任务状态不允许取消（已完成 / 已失败 / 已取消 / 已开始轮询的 processing） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 上游 cancel 失败（seed3d 路径；任务回滚到原状态，未退款） */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     getUsage: {
