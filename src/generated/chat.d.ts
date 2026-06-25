@@ -121,6 +121,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/embeddings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 创建文本向量
+         * @description OpenAI 兼容的文本向量（embeddings）。把文本转成向量，用于语义检索 / 聚类 / 分类 / RAG。无流式。input 接受字符串或字符串数组；网关转发给上游 embedding 模型（如 text-embedding-v4）并把响应归一回 OpenAI 格式。
+         */
+        post: operations["createEmbedding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/responses": {
         parameters: {
             query?: never;
@@ -1275,6 +1295,42 @@ export interface components {
             server_tool_use?: {
                 [key: string]: number;
             };
+        };
+        EmbeddingRequest: {
+            /**
+             * @description 网关模型 ID，必须是 embedding 模型（如 text-embedding-v4）。
+             * @example text-embedding-v4
+             */
+            model: string;
+            /** @description 待向量化文本；字符串或字符串数组。 */
+            input: string | string[];
+            /**
+             * @description float（默认）或 base64。
+             * @default float
+             * @enum {string}
+             */
+            encoding_format: "float" | "base64";
+            /** @description 自定义输出维度（text-embedding-v4 支持 64~2048，默认 1024）；上游不支持时忽略。 */
+            dimensions?: number;
+            user?: string;
+        };
+        EmbeddingResponse: {
+            /** @example list */
+            object: string;
+            data: components["schemas"]["EmbeddingObject"][];
+            /** @example text-embedding-v4 */
+            model: string;
+            usage: {
+                prompt_tokens: number;
+                total_tokens: number;
+            };
+        };
+        EmbeddingObject: {
+            /** @example embedding */
+            object: string;
+            index: number;
+            /** @description float 数组（默认）或 base64 字符串（encoding_format=base64 时）。 */
+            embedding: number[] | string;
         };
         ModelList: {
             /** @enum {string} */
@@ -2643,6 +2699,35 @@ export interface operations {
                      *     data: [DONE]
                      */
                     "text/event-stream": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            402: components["responses"]["InsufficientBalance"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["ServerError"];
+        };
+    };
+    createEmbedding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmbeddingRequest"];
+            };
+        };
+        responses: {
+            /** @description 向量列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingResponse"];
                 };
             };
             400: components["responses"]["BadRequest"];
