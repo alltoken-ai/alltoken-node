@@ -1508,6 +1508,18 @@ export interface components {
             size: "auto" | "1024x1024" | "1536x1024" | "1024x1536";
             user?: string;
         };
+        ImageVariationUploadIDRequest: {
+            /** @example dall-e-2 */
+            model: string;
+            /** @description `POST /uploads/presign` 以 `purpose=image_variation_source` 返回的 upload_id。 */
+            image_upload_id: string;
+            /**
+             * @default auto
+             * @enum {string}
+             */
+            size: "auto" | "1024x1024" | "1536x1024" | "1024x1536";
+            user?: string;
+        };
         ImageGenerationRequest: {
             /**
              * @example wan2.7-image
