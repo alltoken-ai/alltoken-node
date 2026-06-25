@@ -173,6 +173,7 @@ export interface paths {
         put?: never;
         /**
          * Create message (Anthropic format, under /v1)
+         * @deprecated
          * @description Anthropic Messages API 的历史暴露路径。**新集成请使用 `/anthropic/v1/messages`**
          *     （见 anthropic.yml）。本端点保留是因为部分早期客户端硬编码了 `/v1/messages`。
          *
@@ -662,8 +663,6 @@ export interface paths {
          *     - `usage_quota` 是 USD API 使用额度数值，前端展示用 `usage_quota_str`（`$x.xx`，2 位小数 + 美元符号）。
          *     - `token_quota.total_remaining` 是所有有效（`remaining_tokens > 0`）的 grant token 总和。
          *     - `token_quota.by_model[]` 按 `restrict_model` 维度聚合；`model=null` 表示通用 grant（可对任意模型生效）。
-         *
-         *     **双前缀挂载**：除 `/v1/usage` 外还兼容 `/api-chat/v1/usage`，响应完全一致。
          */
         get: operations["getUsage"];
         put?: never;
@@ -697,7 +696,6 @@ export interface paths {
          *     - `cost` / `cost_str` 仅扣款/退款类有值；非扣款类（grant_add / exchange_in 等）返 `null`。
          *     - `cost_str` 4 位小数 + $ 符号前置（如 `$-0.0123`，已处理负零边界为 `$0.0000`）。
          *
-         *     **双前缀挂载**：除 `/v1/billing/transactions` 外还兼容 `/api-chat/v1/billing/transactions`，响应完全一致。
          *
          *     **i18n**：`description` / `billing_type_label` 按 `Accept-Language`（en / zh / zh-Hant / de / fr / ja / ko）切换翻译。
          */
@@ -732,8 +730,6 @@ export interface paths {
          *     **错误码**：
          *     - 404 跨 user 越权 / request_id 不存在 → `{"error":{"code":"not_found","message":"transaction not found"}}`（不区分两种语义，防资源存在性泄露）。
          *     - 400 `request_id` 空 / 长度 > 256 → `invalid_request_id` i18n。
-         *
-         *     **双前缀挂载**：除 `/v1/billing/transactions/{request_id}` 外还兼容 `/api-chat/v1/billing/transactions/{request_id}`。
          */
         get: operations["getTransactionByRequestID"];
         put?: never;
