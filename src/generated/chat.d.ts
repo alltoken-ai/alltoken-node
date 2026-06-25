@@ -439,14 +439,12 @@ export interface paths {
         put?: never;
         /**
          * 创建图像编辑任务（i_edit / mask_edit）
-         * @description 基于源图（必填）+ prompt 创建图像编辑任务。推荐使用 `application/json`
-         *     + `image_upload_id`，由客户端先走 `/uploads/presign` 直传 R2，避免大图片字节穿过网关。
-         *     旧 `multipart/form-data` 路径保留兼容，但在边缘层大 body 场景可能触发 413/challenge。
-         *     - 不提供 `mask` 时按 i_edit（整图编辑）处理
-         *     - 提供 `mask` 时按 mask_edit（局部编辑）处理；`mask` 透明区域为编辑区
-         *     - 源图 / mask 各 ≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`
-         *     - `upload_id` 路径：未使用 claim 2 小时过期删除；任务成功 / 失败 / 取消后输入 active object 立即 fail-soft 删除
-         *     - 旧 multipart 路径仍走历史 R2 temp object 清理机制
+         * @description 基于源图（必填）+ prompt 创建图像编辑任务，仅支持 `application/json`
+         *     + `image_upload_id`。客户端 multipart/form-data 已下线；必须先走 `/uploads/presign` 直传 R2，再提交 JSON。
+         *     - 不提供 `mask_upload_id` 时按 i_edit（整图编辑）处理
+         *     - 提供 `mask_upload_id` 时按 mask_edit（局部编辑）处理；mask 透明区域为编辑区
+         *     - 源图 / mask 各 <= 25MB，MIME in `image/png` / `image/jpeg` / `image/webp`
+         *     - `upload_id` 未使用 claim 2 小时过期删除；任务成功 / 失败 / 取消后输入 active object 立即 fail-soft 删除
          *     - 返回任务 ID（前缀 `igen_iedit_` 或 `igen_mask_`），使用 `GET /images/generations/{id}` 轮询
          */
         post: operations["createImageEdit"];
@@ -467,11 +465,10 @@ export interface paths {
         put?: never;
         /**
          * 创建图像变体任务（variation）
-         * @description 基于源图（必填）创建图像变体任务，不接受 `prompt` / `mask`。推荐使用
-         *     `application/json` + `image_upload_id`，旧 `multipart/form-data` 路径保留兼容。
-         *     - 上游路径 `POST /v1/images/variations`；仅 dall-e-2 等支持 variations 的模型有效，
-         *       不支持的模型上游返 4xx 错误透传到网关
-         *     - 源图 ≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`
+         * @description 基于源图（必填）创建图像变体任务，不接受 `prompt` / `mask`，仅支持
+         *     `application/json` + `image_upload_id`。客户端 multipart/form-data 已下线；必须先走 `/uploads/presign` 直传 R2，再提交 JSON。
+         *     - 上游路径 `POST /v1/images/variations`；仅支持 variations 的模型有效
+         *     - 源图 <= 25MB，MIME in `image/png` / `image/jpeg` / `image/webp`
          *     - 返回任务 ID（前缀 `igen_ivar_`），使用 `GET /images/generations/{id}` 轮询
          */
         post: operations["createImageVariation"];
@@ -1460,57 +1457,6 @@ export interface components {
             items: components["schemas"]["VideoTaskResponse"][];
             total: number;
         };
-        ImageEditMultipartRequest: {
-            /** @example gpt-image-2 */
-            model: string;
-            /**
-             * Format: binary
-             * @description 源图，必填。≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`。
-             */
-            image: string;
-            /** @description 编辑提示词，必填。 */
-            prompt: string;
-            /**
-             * Format: binary
-             * @description 可选 mask 图；提供则按 mask_edit 处理（透明区域为编辑区）。≤ 25MB，同 MIME 约束。
-             */
-            mask?: string;
-            /**
-             * @description 单次生成张数，1-10。
-             * @default 1
-             */
-            n: number;
-            /**
-             * @description `auto` 或 `WIDTHxHEIGHT`；gpt-image-2 起支持任意分辨率（16 整除、最大 3840x2160、比例 1:3 ~ 3:1）。
-             * @default auto
-             * @example 1024x1024
-             */
-            size: string;
-            /**
-             * @default auto
-             * @enum {string}
-             */
-            quality: "auto" | "low" | "medium" | "high";
-            /**
-             * @default png
-             * @enum {string}
-             */
-            output_format: "png" | "jpeg" | "webp";
-            /** @description 仅 jpeg / webp 生效，0-100；未传则上游默认 100。 */
-            output_compression?: number;
-            /**
-             * @default auto
-             * @enum {string}
-             */
-            background: "auto" | "opaque" | "transparent";
-            /**
-             * @default auto
-             * @enum {string}
-             */
-            moderation: "auto" | "low";
-            /** @description 透传上游用于滥用监控。 */
-            user?: string;
-        };
         ImageEditUploadIDRequest: {
             /** @example gpt-image-2 */
             model: string;
@@ -1550,20 +1496,16 @@ export interface components {
             moderation: "auto" | "low";
             user?: string;
         };
-        ImageVariationMultipartRequest: {
+        ImageVariationUploadIDRequest: {
             /** @example dall-e-2 */
             model: string;
-            /**
-             * Format: binary
-             * @description 源图，必填。≤ 25MB，MIME ∈ `image/png` / `image/jpeg` / `image/webp`。
-             */
-            image: string;
+            /** @description `POST /uploads/presign` 以 `purpose=image_variation_source` 返回的 upload_id。 */
+            image_upload_id: string;
             /**
              * @default auto
              * @enum {string}
              */
             size: "auto" | "1024x1024" | "1536x1024" | "1024x1536";
-            /** @description 透传上游用于滥用监控。 */
             user?: string;
         };
         ImageVariationUploadIDRequest: {
@@ -1618,6 +1560,11 @@ export interface components {
              * @enum {string}
              */
             moderation: "auto" | "low";
+            /**
+             * Format: int64
+             * @description 仅 `wan2.7-image` / `wan2.7-image-pro` 生效，透传到 DashScope Wan `parameters.seed`；其它图像模型不保证生效。
+             */
+            seed?: number;
             /** @description 透传上游用于滥用监控。 */
             user?: string;
         };
@@ -3139,7 +3086,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["ImageEditMultipartRequest"];
                 "application/json": components["schemas"]["ImageEditUploadIDRequest"];
             };
         };
@@ -3198,7 +3144,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["ImageVariationMultipartRequest"];
                 "application/json": components["schemas"]["ImageVariationUploadIDRequest"];
             };
         };
