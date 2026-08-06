@@ -1526,15 +1526,27 @@ export interface components {
             type: "text" | "image_url" | "video_url" | "audio_url" | "draft_task" | "image" | "video" | "audio";
             text?: string;
             image_url?: {
-                /** Format: uri */
+                /**
+                 * Format: uri
+                 * @description 公网可访问的 `http(s)` 地址。**`data:` base64 内联已下线**（2026-08-06），
+                 *     本地文件请先走 `POST /uploads/presign` 直传后用 `upload_id` 引用。
+                 */
                 url?: string;
             };
             video_url?: {
-                /** Format: uri */
+                /**
+                 * Format: uri
+                 * @description 公网可访问的 `http(s)` 地址。**`data:` base64 内联已下线**（2026-08-06），
+                 *     本地文件请先走 `POST /uploads/presign` 直传后用 `upload_id` 引用。
+                 */
                 url?: string;
             };
             audio_url?: {
-                /** Format: uri */
+                /**
+                 * Format: uri
+                 * @description 公网可访问的 `http(s)` 地址。**`data:` base64 内联已下线**（2026-08-06），
+                 *     本地文件请先走 `POST /uploads/presign` 直传后用 `upload_id` 引用。
+                 */
                 url?: string;
             };
             draft_task?: {
@@ -1542,7 +1554,10 @@ export interface components {
             };
             /** @enum {string} */
             role?: "first_frame" | "last_frame" | "reference_image" | "reference_video" | "reference_audio";
-            /** @description 简化格式（type=image/video/audio 时） */
+            /**
+             * @description 简化格式（type=image/video/audio 时）。同样只接受公网 `http(s)` 地址；
+             *     `data:` base64 内联已下线（2026-08-06）。
+             */
             url?: string;
             /**
              * @description 由 `POST /uploads/presign` 返回的媒体输入 claim ID。简化格式中：
