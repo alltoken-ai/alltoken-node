@@ -1476,8 +1476,9 @@ export interface components {
              *     - `seedance-1.0-pro` / `seedance-1.0-pro-fast`：`[2, 12]` 任意整数
              *     - `seedance-1.5-pro`：`[4, 12]` 任意整数 或 `-1`
              *     - `seedance-2.0` / `seedance-2.0-fast`：`[4, 15]` 任意整数 或 `-1`
+             *     - `seedance-2.5`：`[4, 30]` 任意整数 或 `-1`
              *
-             *     **`-1`（智能时长）**：由模型在有效范围内自主选择，**仅 1.5-pro / 2.0 系列支持**。
+             *     **`-1`（智能时长）**：由模型在有效范围内自主选择，**仅 1.5-pro / 2.0 / 2.5 系列支持**。
              *
              *     **`0` 或不传**：使用上游默认值（5）。
              *
@@ -1485,7 +1486,13 @@ export interface components {
              * @example 5
              */
             duration?: number;
-            /** @enum {string} */
+            /**
+             * @description 输出分辨率。**取值范围按模型差异化**：`seedance-2.5` 仅支持 `480p` / `720p`
+             *     （不支持 `1080p`），其余 Seedance 系列支持全部三档。
+             *
+             *     传入模型不支持的档位会被网关 fail-fast 拦截为 `400 invalid_request`。
+             * @enum {string}
+             */
             resolution?: "480p" | "720p" | "1080p";
             /**
              * @description 视频帧数（小数秒方案，与 duration 二选一，frames 优先级高于 duration）。
@@ -1525,6 +1532,24 @@ export interface components {
                 type?: "web_search";
             }[];
             safety_identifier?: string;
+            /**
+             * @description 输出容器格式，**仅 `seedance-2.5` 支持**。不传或其他模型使用时按上游默认 `mp4` 处理。
+             *
+             *     `mov` 面向专业后期（yuv444p 色度采样 + PCM 音频编码），浏览器不保证能播放，
+             *     建议仅在 API 集成场景使用。
+             * @enum {string}
+             */
+            output_format?: "mp4" | "mov";
+            /**
+             * @description 全模态参考生视频任务类型声明，**仅 `seedance-2.5` 支持**。
+             *
+             *     - 不传 / `auto`：模型自行判断任务类型；参数不合规时任务**异步失败**（提交已成功、预扣已发生）。
+             *     - `edit`（视频编辑）：要求 `ratio=adaptive` 且 `duration=-1`，否则网关本地拦截为
+             *       `400 invalid_request`（预扣之前，不会产生异步失败）。
+             *     - `extend`（视频延长）：要求 `ratio=adaptive`，否则网关本地拦截为 `400 invalid_request`。
+             * @enum {string}
+             */
+            omni_reference_task_type?: "" | "auto" | "edit" | "extend";
         };
         VideoContentItem: {
             /** @enum {string} */
