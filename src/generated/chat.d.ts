@@ -382,6 +382,11 @@ export interface paths {
          * Create a video generation task
          * @description 创建异步视频生成任务。返回任务 ID（HTTP 202 Accepted），使用 `GET /videos/generations/{id}` 轮询状态。
          *
+         *     可选请求头 `Idempotency-Key` 在当前 API Key 下永久不可复用，建议每次新任务使用 UUID。
+         *     同 key 同请求体重试返回原任务的当前视图（HTTP 200），不会重复扣费或提交上游；
+         *     同 key 不同请求体返回 `409 idempotency_key_reused`。若原请求仍处于副作用前认领窗口，
+         *     并发重试暂时返回 503 + `Retry-After: 1`，客户端应继续使用同一个 key 重试。
+         *
          *     **响应消息国际化**：错误响应的 `error.message` 会根据请求 `Accept-Language` 头返回对应语言文案（支持
          *     en/zh/zh-Hant/ja/ko/fr/de）。`error.code` 字段保持稳定，客户端按 code 做分支判断。
          */
@@ -1471,8 +1476,9 @@ export interface components {
              *     - `seedance-1.0-pro` / `seedance-1.0-pro-fast`：`[2, 12]` 任意整数
              *     - `seedance-1.5-pro`：`[4, 12]` 任意整数 或 `-1`
              *     - `seedance-2.0` / `seedance-2.0-fast`：`[4, 15]` 任意整数 或 `-1`
+             *     - `seedance-2.5`：`[4, 30]` 任意整数 或 `-1`
              *
-             *     **`-1`（智能时长）**：由模型在有效范围内自主选择，**仅 1.5-pro / 2.0 系列支持**。
+             *     **`-1`（智能时长）**：由模型在有效范围内自主选择，**仅 1.5-pro / 2.0 / 2.5 系列支持**。
              *
              *     **`0` 或不传**：使用上游默认值（5）。
              *
@@ -1480,7 +1486,13 @@ export interface components {
              * @example 5
              */
             duration?: number;
-            /** @enum {string} */
+            /**
+             * @description 输出分辨率。**取值范围按模型差异化**：`seedance-2.5` 仅支持 `480p` / `720p`
+             *     （不支持 `1080p`），其余 Seedance 系列支持全部三档。
+             *
+             *     传入模型不支持的档位会被网关 fail-fast 拦截为 `400 invalid_request`。
+             * @enum {string}
+             */
             resolution?: "480p" | "720p" | "1080p";
             /**
              * @description 视频帧数（小数秒方案，与 duration 二选一，frames 优先级高于 duration）。
@@ -1520,6 +1532,24 @@ export interface components {
                 type?: "web_search";
             }[];
             safety_identifier?: string;
+            /**
+             * @description 输出容器格式，**仅 `seedance-2.5` 支持**。不传或其他模型使用时按上游默认 `mp4` 处理。
+             *
+             *     `mov` 面向专业后期（yuv444p 色度采样 + PCM 音频编码），浏览器不保证能播放，
+             *     建议仅在 API 集成场景使用。
+             * @enum {string}
+             */
+            output_format?: "mp4" | "mov";
+            /**
+             * @description 全模态参考生视频任务类型声明，**仅 `seedance-2.5` 支持**。
+             *
+             *     - 不传 / `auto`：模型自行判断任务类型；参数不合规时任务**异步失败**（提交已成功、预扣已发生）。
+             *     - `edit`（视频编辑）：要求 `ratio=adaptive` 且 `duration=-1`，否则网关本地拦截为
+             *       `400 invalid_request`（预扣之前，不会产生异步失败）。
+             *     - `extend`（视频延长）：要求 `ratio=adaptive`，否则网关本地拦截为 `400 invalid_request`。
+             * @enum {string}
+             */
+            omni_reference_task_type?: "" | "auto" | "edit" | "extend";
         };
         VideoContentItem: {
             /** @enum {string} */
@@ -3201,6 +3231,11 @@ export interface operations {
     listVideoGenerations: {
         parameters: {
             query?: {
+                /** @description 页码，默认 1。 */
+                page_num?: number;
+                /** @description 每页数量，默认 20，最大 500；与 `limit` 同时传入时优先使用本参数。 */
+                page_size?: number;
+                /** @description `page_size` 的兼容别名；仅在未传 `page_size` 时生效。 */
                 limit?: number;
                 /** @description queued / processing / completed / failed / expired / cancelled */
                 status?: string;
@@ -3226,7 +3261,10 @@ export interface operations {
     createVideoGeneration: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 当前 API Key 下永久唯一的请求标识；建议使用 UUID。 */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -3236,6 +3274,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Idempotency-Key 命中同一请求体，返回既有任务的当前完整视图。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoTaskResponse"];
+                };
+            };
             /**
              * @description 任务已创建（异步排队）。响应包含 `id`（task_id）+ `status: queued`，
              *     后续用 `GET /videos/generations/{id}` 轮询直至 `succeeded` / `failed` / `cancelled` / `expired`。
@@ -3277,10 +3324,22 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Idempotency-Key 已被不同请求体使用（`error.code=idempotency_key_reused`）。 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             429: components["responses"]["RateLimited"];
             /**
              * @description 上游服务异常。可能的 `error.code`：
-             *     - `upstream_error` — 上游 5xx / 网络错 / 解析错（不透传上游内部细节，仅用 i18n 通用文案）
+             *     - `idempotency_check_failed` — 暂时无法查询既有任务，或同 key 的首次请求仍在认领；请按 `Retry-After` 使用同一个 key 重试
+             *     - `prepay_unknown` — 预扣响应丢失，扣款结果待对账；原 task/key 已冻结，必须使用同一个 key 查询，不能换 key 重建
+             *     - `prepay_persist_unknown` — 预扣成功但扣费事实落任务表失败；任务已冻结并触发人工对账
+             *     - `upstream_error` — 上游 5xx，或发送后断连/2xx 响应损坏等提交结果不确定（不透传上游内部细节）
              *     - `upstream_auth_failed` — 上游鉴权问题（网关侧 key 失效，对外仅显示"服务暂时不可用"）
              *     - `unknown_api_format` — 配置错（mapping.api_format 未在 adapter registry 注册）
              */
