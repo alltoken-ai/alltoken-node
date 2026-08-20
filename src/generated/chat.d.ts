@@ -1172,22 +1172,28 @@ export interface components {
             temperature?: number;
             top_p?: number;
             top_k?: number;
-            stop?: string[];
+            /** @description 停止序列：单个字符串或字符串数组。 */
+            stop?: string | string[];
             user?: string;
             tools?: components["schemas"]["Tool"][];
             /** @description `auto` / `none` / `required` / `{type: function, function: {name: ...}}` */
             tool_choice?: unknown;
             response_format?: {
                 /** @enum {string} */
-                type?: "text" | "json_object";
+                type?: "text" | "json_object" | "json_schema";
+                /** @description Structured Outputs：type=json_schema 时的 {name, schema, strict} 整块，原样透传上游。 */
+                json_schema?: Record<string, never>;
             };
             /** @description 网关扩展 —— 启用联网搜索 */
             enable_search?: boolean;
             frequency_penalty?: number;
             presence_penalty?: number;
             n?: number;
-            /** @description 网关扩展 —— 启用思考链 */
-            thinking?: boolean;
+            /** @description 网关扩展 —— 启用思考链。接受 boolean，或 DeepSeek 风格对象 {"type":"enabled"|"disabled"}。 */
+            thinking?: boolean | {
+                /** @enum {string} */
+                type?: "enabled" | "disabled";
+            };
             /** @description 网关扩展 —— 思考链 token 预算 */
             thinking_budget?: number;
             /**
@@ -1197,8 +1203,11 @@ export interface components {
             conversation_id?: number;
         };
         ChatMessage: {
-            /** @enum {string} */
-            role: "system" | "user" | "assistant" | "tool";
+            /**
+             * @description developer 是 system 的别名（OpenAI o 系列惯例），网关入站归一为 system。
+             * @enum {string}
+             */
+            role: "system" | "developer" | "user" | "assistant" | "tool";
             /**
              * @description 消息内容：字符串，或 ContentPart 数组（多模态），或 null（assistant 返回 tool_calls 时）。
              *     JSON 层允许 null；SDK 用 Union/any 类型接收。
