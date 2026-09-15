@@ -283,9 +283,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create R2 upload presign for voice sample
-         * @description Issues a short-lived (300s) presigned R2 PUT URL for uploading a voice clone sample
-         *     (up to 10 MiB, audio/wav only in this release). Client uploads directly to R2 with
+         * Create OSS upload presign for voice sample
+         * @description Issues a short-lived (300s) presigned OSS PUT URL for uploading a voice clone sample
+         *     (up to 10 MiB, audio/wav only in this release). Client uploads directly to OSS with
          *     Content-Type, Content-MD5 and Content-Length headers as instructed, then submits the
          *     returned `upload_id` to `POST /audio/voices` instead of inlining base64.
          *     Avoids 10 MiB base64 round-trips through the gateway. MP3/M4A support will land in a
@@ -352,9 +352,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 创建媒体输入素材 R2 直传 presign
-         * @description 为图生图、图生视频、视频生视频、视频音频参考等输入素材签发短期 R2 PUT URL。
-         *     客户端按返回的 `required_headers` 直接 PUT 到 R2，再把 `upload_id` 提交给
+         * 创建媒体输入素材 OSS 直传 presign
+         * @description 为图生图、图生视频、视频生视频、视频音频参考等输入素材签发短期 OSS PUT URL。
+         *     客户端按返回的 `required_headers` 直接 PUT 到 OSS，再把 `upload_id` 提交给
          *     `/images/edits`、`/images/variations` 或 `/videos/generations`。
          *
          *     presign URL 有效期 5 分钟；未绑定 claim 2 小时自动过期并删除临时对象；
@@ -466,7 +466,7 @@ export interface paths {
         /**
          * 创建图像编辑任务（i_edit / mask_edit）
          * @description 基于源图（必填）+ prompt 创建图像编辑任务，仅支持 `application/json`
-         *     + `image_upload_id`。客户端 multipart/form-data 已下线；必须先走 `/uploads/presign` 直传 R2，再提交 JSON。
+         *     + `image_upload_id`。客户端 multipart/form-data 已下线；必须先走 `/uploads/presign` 直传 OSS，再提交 JSON。
          *     - 不提供 `mask_upload_id` 时按 i_edit（整图编辑）处理
          *     - 提供 `mask_upload_id` 时按 mask_edit（局部编辑）处理；mask 透明区域为编辑区
          *     - 源图 / mask 各 <= 25MB，MIME in `image/png` / `image/jpeg` / `image/webp`
@@ -492,7 +492,7 @@ export interface paths {
         /**
          * 创建图像变体任务（variation）
          * @description 基于源图（必填）创建图像变体任务，不接受 `prompt` / `mask`，仅支持
-         *     `application/json` + `image_upload_id`。客户端 multipart/form-data 已下线；必须先走 `/uploads/presign` 直传 R2，再提交 JSON。
+         *     `application/json` + `image_upload_id`。客户端 multipart/form-data 已下线；必须先走 `/uploads/presign` 直传 OSS，再提交 JSON。
          *     - 上游路径 `POST /v1/images/variations`；仅支持 variations 的模型有效
          *     - 源图 <= 25MB，MIME in `image/png` / `image/jpeg` / `image/webp`
          *     - 返回任务 ID（前缀 `igen_ivar_`），使用 `GET /images/generations/{id}` 轮询
@@ -540,10 +540,10 @@ export interface paths {
          *     并立刻删除服务端临时结果文件。
          *
          *     二次及之后的查询：
-         *       - R2 URL 仍在 `r2_url_expires_at` 之前 → 返 200，data 含 `r2_url` 但**不含** `b64_json`
-         *         （`b64_json` 仍是一次性 delivery，跨刷新可访问 R2 URL 即可）
-         *       - R2 URL 已过期 → 返 `410 image_expired`
-         *       - 旧任务/R2 上传失败导致无 `r2_url` 兜底 → 返 `410 image_already_retrieved`
+         *       - OSS URL 仍在 `r2_url_expires_at` 之前 → 返 200，data 含 `r2_url` 但**不含** `b64_json`
+         *         （`b64_json` 仍是一次性 delivery，跨刷新可访问 OSS URL 即可）
+         *       - OSS URL 已过期 → 返 `410 image_expired`
+         *       - 旧任务/OSS 上传失败导致无 `r2_url` 兜底 → 返 `410 image_already_retrieved`
          *
          *     其他过期场景：本机临时文件 TTL（30min）过期但任务未 delivered → `410 image_expired`。
          */
@@ -798,12 +798,12 @@ export interface paths {
         put?: never;
         /**
          * Upload portrait asset (multipart)
-         * @description 把本地图片 multipart 上传到 AllToken R2 对象存储，再自动调火山 `CreateAsset`
-         *     以 R2 URL 注册成 portrait 素材。适合没自建 CDN 的小客户 / 联调场景；
+         * @description 把本地图片 multipart 上传到 AllToken OSS 对象存储，再自动调火山 `CreateAsset`
+         *     以 OSS URL 注册成 portrait 素材。适合没自建 CDN 的小客户 / 联调场景；
          *     有自建 CDN 的客户可继续用 `/portrait/?Action=CreateAsset` 直接传 URL。
          *
-         *     工作流：multipart 上传 → R2 落盘 → 调火山 `CreateAsset(URL=R2_URL)` → 落 DB。
-         *     火山或 DB 失败时 R2 文件会进入孤儿状态，由 worker `portrait:orphan_scan`
+         *     工作流：multipart 上传 → OSS 落盘 → 调火山 `CreateAsset(URL=OSS_URL)` → 落 DB。
+         *     火山或 DB 失败时 OSS 文件会进入孤儿状态，由 worker `portrait:orphan_scan`
          *     凌晨清理。
          *
          *     **限制**：
@@ -982,7 +982,7 @@ export interface components {
             content_type: "image/png" | "image/jpeg" | "image/webp" | "video/mp4" | "video/webm" | "video/quicktime" | "audio/wav" | "audio/mpeg" | "audio/mp4" | "audio/aac" | "audio/ogg" | "audio/webm";
             /** @description 上传字节数；不同 purpose 有独立上限。 */
             content_length: number;
-            /** @description Base64 MD5；R2 PUT 必须携带同值 Content-MD5。 */
+            /** @description Base64 MD5；OSS PUT 必须携带同值 Content-MD5。 */
             content_md5: string;
             /** @description Lowercase hex SHA-256；bind 时用于服务端一致性校验。 */
             checksum_sha256: string;
@@ -990,7 +990,7 @@ export interface components {
         MediaUploadPresignResponse: {
             /**
              * Format: uri
-             * @description 预签名 R2 PUT URL，仅在 `expires_in` 秒内有效；不要持久化或回显到日志。
+             * @description 预签名 OSS PUT URL，仅在 `expires_in` 秒内有效；不要持久化或回显到日志。
              */
             upload_url: string;
             /** @enum {string} */
@@ -1034,7 +1034,7 @@ export interface components {
             content_type: "audio/wav";
             /** @description Byte length of the file to upload. Hard cap 10 MiB (10485760). */
             content_length: number;
-            /** @description Base64 MD5 (16-byte digest -> 24 chars). Enforced by R2 PUT. */
+            /** @description Base64 MD5 (16-byte digest -> 24 chars). Enforced by OSS PUT. */
             content_md5: string;
             /** @description Lowercase hex SHA-256 (64 chars). Recomputed server-side at commit. */
             checksum_sha256: string;
@@ -1042,7 +1042,7 @@ export interface components {
         TTSUploadPresignResponse: {
             /**
              * Format: uri
-             * @description Pre-signed R2 PUT URL valid for `expires_in` seconds.
+             * @description Pre-signed OSS PUT URL valid for `expires_in` seconds.
              */
             upload_url: string;
             /** @enum {string} */
@@ -1116,7 +1116,7 @@ export interface components {
             model: "mimo-v2.5-tts-voiceclone" | "mimo-v2.5-tts-voicedesign";
             name: string;
             /**
-             * @description PR-TTS-6 R2 direct-upload claim ID (recommended path, up to 10 MiB sample).
+             * @description PR-TTS-6 OSS direct-upload claim ID (recommended path, up to 10 MiB sample).
              *     Mutually exclusive with multipart `sample_audio` and `sample_audio_base64`;
              *     exclusivity check is only triggered when `upload_id` is present — legacy single-source
              *     clients see zero behavior change.
@@ -1810,8 +1810,8 @@ export interface components {
              * @description **【已弃用 / Deprecated，未来版本将移除】**
              *
              *     Base64 编码图片数据，仅在 `completed` 首次 GET 返回（一次性 delivery，二次 GET 不返回）。
-             *     推荐使用 `r2_url` 替代 —— R2 公开 URL 至少保留 30 天，跨刷新可访问且省 ~33% 流量（无 base64 膨胀）。
-             *     R2 上传失败时 `r2_url` 不存在，旧客户端仍可 fallback 到本字段。
+             *     推荐使用 `r2_url` 替代 —— OSS 公开 URL 至少保留 30 天，跨刷新可访问且省 ~33% 流量（无 base64 膨胀）。
+             *     OSS 上传失败时 `r2_url` 不存在，旧客户端仍可 fallback 到本字段。
              */
             b64_json?: string;
             /**
@@ -1822,15 +1822,19 @@ export interface components {
             revised_prompt?: string;
             /**
              * Format: uri
-             * @description R2 公开 URL，至少保留 30 天，跨刷新可访问。首次 GET 同时返回 `b64_json` + `r2_url`；
+             * @description OSS 公开 URL，至少保留 30 天，跨刷新可访问。首次 GET 同时返回 `b64_json` + `r2_url`；
              *     二次 GET 不再返回 `b64_json`（一次性 delivery），但 `r2_url` 仍随 200 响应返回直到
-             *     `r2_url_expires_at` 过期（之后返 `410 image_expired`）。R2 上传失败时该字段不存在，
-             *     客户端应保留首次 GET 拿到的 `b64_json` 用于显示（旧任务/无 R2 兜底 → `410 image_already_retrieved`）。
+             *     `r2_url_expires_at` 过期（之后返 `410 image_expired`）。OSS 上传失败时该字段不存在，
+             *     客户端应保留首次 GET 拿到的 `b64_json` 用于显示（旧任务/无 OSS 兜底 → `410 image_already_retrieved`）。
+             *
+             *     注：2026-09-15 对象存储由 Cloudflare R2 迁至阿里云 OSS，**字段名 `r2_url` /
+             *     `r2_url_expires_at` 保持不变**（改名会破坏既有客户端与 SDK）。读作「结果图片的公开 URL」，
+             *     不要依赖 URL 的域名形态。
              */
             r2_url?: string;
             /**
              * Format: date-time
-             * @description R2 URL 过期时间（RFC3339 UTC）。过期后由 R2 lifecycle 自动清理对象。
+             * @description OSS URL 过期时间（RFC3339 UTC）。过期后由 OSS lifecycle 自动清理对象。
              */
             r2_url_expires_at?: string;
             /** @description 图片 MIME 类型（`image/png` / `image/jpeg` / `image/webp`），便于客户端下载命名与浏览器解码。 */
@@ -2249,11 +2253,11 @@ export interface components {
             Status: string;
             /**
              * Format: uri
-             * @description R2 公开 URL，同时是传给火山 `CreateAsset(URL=...)` 的 URL。
+             * @description OSS 公开 URL，同时是传给火山 `CreateAsset(URL=...)` 的 URL。
              */
             UploadedURL: string;
             /**
-             * @description R2 object key，用于排障 / 后续 lifecycle 操作。
+             * @description OSS object key，用于排障 / 后续 lifecycle 操作。
              * @example portrait-uploads/12/9a3fce.jpg
              */
             R2Key: string;
@@ -3513,7 +3517,7 @@ export interface operations {
             };
             429: components["responses"]["RateLimited"];
             500: components["responses"]["ServerError"];
-            /** @description 网关 R2 storage 未配置或上游 storage 不可用 */
+            /** @description 网关 OSS storage 未配置或上游 storage 不可用 */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3571,7 +3575,7 @@ export interface operations {
             };
             429: components["responses"]["RateLimited"];
             500: components["responses"]["ServerError"];
-            /** @description 网关 R2 storage 未配置或上游 storage 不可用 */
+            /** @description 网关 OSS storage 未配置或上游 storage 不可用 */
             503: {
                 headers: {
                     [name: string]: unknown;
